@@ -1,0 +1,1322 @@
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "./supabase";
+
+// ═══════════════════════════════════════════════════════════
+// KOPERASI THE POWER 55 — PRODUCTION (Supabase)
+// ═══════════════════════════════════════════════════════════
+
+const TIERS = {
+  bronze:   { label:"Bronze", min:1000000, max:2000000, color:"#CD7F32", icon:"🥉" },
+  silver:   { label:"Silver", min:2000000, max:3000000, color:"#C0C0C0", icon:"🥈" },
+  gold:     { label:"Gold", min:3000000, max:4000000, color:"#FFD700", icon:"🥇" },
+  goldstar: { label:"Gold Star", min:4000000, max:6000000, color:"#FF8C00", icon:"⭐" },
+};
+const getTier = (n) => n >= 3 ? "goldstar" : n >= 2 ? "gold" : n >= 1 ? "silver" : "bronze";
+
+const CERT_TYPES = ["STCW (Basic Safety Training)","COC (Certificate of Competency)","Buku Pelaut","Passport","Medical Certificate","BST Renewal","ANT/ATT Upgrade","Lainnya"];
+
+const CAT_MASUK = [
+  { id:"sp", label:"Simpanan Pokok", color:"#22C55E" },
+  { id:"tw", label:"Tabungan Wajib", color:"#14B8A6" },
+  { id:"cicilan", label:"Cicilan Pinjaman", color:"#0D7377" },
+  { id:"lunas", label:"Pelunasan Pinjaman", color:"#0EA5E9" },
+  { id:"admin_in", label:"Margin Jasa", color:"#a855f7" },
+  { id:"infaq", label:"Infaq/Donasi", color:"#ec4899" },
+  { id:"lainnya_in", label:"Lainnya (Masuk)", color:"#94a3b8" },
+];
+const CAT_KELUAR = [
+  { id:"cair", label:"Pencairan Pinjaman", color:"#F59E0B" },
+  { id:"jasa", label:"Bayar Jasa Sertifikat", color:"#a855f7" },
+  { id:"sosial", label:"Dana Sosial / Duka", color:"#ec4899" },
+  { id:"shu_out", label:"Bagi SHU Anggota", color:"#FFD700" },
+  { id:"operasional", label:"Biaya Operasional", color:"#64748B" },
+  { id:"lainnya_out", label:"Lainnya (Keluar)", color:"#94a3b8" },
+];
+const ALL_CATS = [...CAT_MASUK, ...CAT_KELUAR];
+
+const C = {
+  dark:"#0b1120", card:"#111b2e", border:"#1a2d47", text:"#e2e8f0", muted:"#7a8ba5",
+  teal:"#0D7377", mint:"#14B8A6", green:"#22C55E", red:"#EF4444", amber:"#F59E0B",
+  accent:"#38bdf8", purple:"#a855f7", pink:"#ec4899",
+};
+
+const fmt = (n) => new Intl.NumberFormat("id-ID").format(Math.round(n || 0));
+const fmtJt = (n) => { n = n||0; return n >= 1000000 ? `${(n/1000000).toFixed(2)}jt` : n >= 1000 ? `${(n/1000).toFixed(0)}rb` : `${n}`; };
+const fmtDate = (d) => d ? new Date(d).toLocaleDateString("id-ID",{day:"2-digit",month:"short",year:"numeric"}) : "-";
+const getInitials = (name) => (name||"?").split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
+const getAvatarColor = (name) => {
+  const colors = [C.teal, C.purple, C.pink, C.amber, C.accent, C.green, C.mint];
+  let hash = 0;
+  for (let i=0;i<(name||"").length;i++) hash = name.charCodeAt(i) + ((hash<<5)-hash);
+  return colors[Math.abs(hash) % colors.length];
+};
+const timeAgo = (ts) => {
+  const ms = Date.now() - new Date(ts).getTime();
+  const h = ms/(1000*60*60);
+  if (h < 1) return `${Math.max(0,Math.floor(ms/60000))} menit lalu`;
+  if (h < 24) return `${Math.floor(h)} jam lalu`;
+  return `${Math.floor(h/24)} hari lalu`;
+};
+const timeUntil = (ts) => {
+  const ms = new Date(ts).getTime() - Date.now();
+  if (ms <= 0) return "Selesai";
+  const h = Math.floor(ms/(1000*60*60));
+  const m = Math.floor((ms%(1000*60*60))/60000);
+  return h > 0 ? `${h}j ${m}m` : `${m} menit`;
+};
+
+function Badge({ text, color, size=10 }) {
+  return <span style={{fontSize:size,padding:"2px 8px",borderRadius:99,fontWeight:600,background:`${color}20`,color,whiteSpace:"nowrap",border:`1px solid ${color}30`}}>{text}</span>;
+}
+function StatBox({ icon, label, value, sub, color }) {
+  return <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px"}}>
+    <div style={{fontSize:11,color:C.muted,display:"flex",alignItems:"center",gap:5,marginBottom:4}}><span style={{fontSize:14}}>{icon}</span>{label}</div>
+    <div style={{fontSize:20,fontWeight:700,color:color||C.text}}>{value}</div>
+    {sub && <div style={{fontSize:10,color:C.muted,marginTop:3}}>{sub}</div>}
+  </div>;
+}
+function SectionTitle({ icon, title }) {
+  return <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,marginTop:8}}><span style={{fontSize:16}}>{icon}</span><div style={{fontSize:13,fontWeight:700}}>{title}</div></div>;
+}
+function Row({ label, value, color }) {
+  return <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px dashed ${C.border}`}}><span style={{color:C.muted}}>{label}</span><strong style={{color:color||C.text}}>{value}</strong></div>;
+}
+function Modal({ title, onClose, children }) {
+  return <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",padding:16,zIndex:1000}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:20,maxWidth:480,width:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <h3 style={{fontSize:15,fontWeight:700,margin:0}}>{title}</h3>
+        <button onClick={onClose} style={{background:"none",border:"none",color:C.muted,fontSize:20,cursor:"pointer"}}>×</button>
+      </div>
+      {children}
+    </div>
+  </div>;
+}
+
+// ═══════════════════════════════════════════════════════════
+// ROOT
+// ═══════════════════════════════════════════════════════════
+export default function App() {
+  const [session, setSession] = useState(null);
+  const [members, setMembers] = useState([]);
+  const [loans, setLoans] = useState([]);
+  const [apps, setApps] = useState([]);
+  const [votes, setVotes] = useState([]);
+  const [banks, setBanks] = useState([]);
+  const [txs, setTxs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
+
+  const loadAll = useCallback(async () => {
+    try {
+      const [m, l, a, v, b, t] = await Promise.all([
+        supabase.from("members").select("*").order("no"),
+        supabase.from("loans").select("*"),
+        supabase.from("applications").select("*").order("created_at",{ascending:false}),
+        supabase.from("votes").select("*"),
+        supabase.from("banks").select("*").order("id"),
+        supabase.from("transactions").select("*").order("date",{ascending:false}),
+      ]);
+      if (m.error) throw m.error;
+      setMembers(m.data||[]); setLoans(l.data||[]); setApps(a.data||[]);
+      setVotes(v.data||[]); setBanks(b.data||[]); setTxs(t.data||[]);
+      setErr(null);
+    } catch(e) {
+      setErr(e.message || "Gagal memuat data. Cek koneksi & konfigurasi Supabase.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAll();
+    try {
+      const s = localStorage.getItem("k55-session");
+      if (s) setSession(JSON.parse(s));
+    } catch(e){}
+  }, [loadAll]);
+
+  // Realtime: refresh saat ada perubahan
+  useEffect(() => {
+    if (!session) return;
+    const ch = supabase.channel("k55-changes")
+      .on("postgres_changes",{event:"*",schema:"public"},()=>loadAll())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [session, loadAll]);
+
+  // Auto-close polling yang lewat 24 jam
+  useEffect(() => {
+    if (!session) return;
+    const closeExpired = async () => {
+      const expired = apps.filter(a => a.status === "voting" && new Date(a.deadline) <= new Date());
+      if (expired.length) {
+        await supabase.from("applications").update({status:"pending_approval"}).in("id", expired.map(e=>e.id));
+        loadAll();
+      }
+    };
+    closeExpired();
+    const i = setInterval(closeExpired, 60000);
+    return () => clearInterval(i);
+  }, [apps, session, loadAll]);
+
+  useEffect(() => {
+    if (session) localStorage.setItem("k55-session", JSON.stringify(session));
+    else localStorage.removeItem("k55-session");
+  }, [session]);
+
+  const data = { members, loans, apps, votes, banks, txs, reload: loadAll };
+
+  if (loading) return <Shell><Center>Memuat data…</Center></Shell>;
+  if (err) return <Shell><Center>
+    <div style={{color:C.red,fontSize:14,marginBottom:8}}>⚠️ {err}</div>
+    <div style={{fontSize:12,color:C.muted,maxWidth:340,textAlign:"center",lineHeight:1.7}}>
+      Pastikan Environment Variables <code>VITE_SUPABASE_URL</code> dan <code>VITE_SUPABASE_ANON_KEY</code> sudah diisi benar di Vercel, lalu Redeploy.
+    </div>
+  </Center></Shell>;
+
+  return (
+    <Shell>
+      {!session && <LoginScreen members={members} onLogin={setSession} />}
+      {session?.isAdmin && <AdminApp session={session} data={data} onLogout={()=>setSession(null)} />}
+      {session && !session.isAdmin && <MemberApp session={session} data={data} onLogout={()=>setSession(null)} />}
+    </Shell>
+  );
+}
+
+function Center({ children }) {
+  return <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:C.text,fontSize:13,gap:6,padding:20}}>{children}</div>;
+}
+
+function Shell({ children }) {
+  return <div style={{fontFamily:"'Segoe UI',system-ui,sans-serif",background:C.dark,color:C.text,minHeight:"100vh"}}>
+    <style>{`
+      *{box-sizing:border-box}
+      @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+      .fade{animation:fadeUp .25s ease backwards}
+      ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:#2a3f5f;border-radius:3px}
+      input,textarea,select{font-family:inherit;outline:none}
+      .btn{padding:9px 16px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;transition:.15s}
+      .btn-primary{background:${C.teal};color:#fff}.btn-primary:hover{background:#0F8A8F}
+      .btn-primary:disabled{background:${C.border};cursor:not-allowed;color:${C.muted}}
+      .btn-secondary{background:transparent;color:${C.text};border:1px solid ${C.border}}
+      .btn-secondary:hover{border-color:${C.teal}}
+      .btn-danger{background:${C.red};color:#fff}.btn-success{background:${C.green};color:#fff}
+      .input{background:${C.card};border:1px solid ${C.border};color:${C.text};padding:10px 12px;border-radius:8px;font-size:13px;width:100%;transition:.15s}
+      .input:focus{border-color:${C.teal}}
+      .tab{padding:8px 14px;border:1px solid transparent;border-radius:8px;background:none;color:${C.muted};cursor:pointer;font-size:12px;font-family:inherit;transition:.15s;white-space:nowrap}
+      .tab:hover{color:${C.text};background:rgba(255,255,255,.04)}
+      .tab.on{background:rgba(255,255,255,.07);color:${C.text};border-color:${C.border}}
+      .subtab{padding:6px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;transition:.15s;border:1px solid ${C.border};background:transparent;color:${C.muted};font-family:inherit}
+      .subtab.on{background:${C.teal}20;border-color:${C.teal};color:${C.mint}}
+    `}</style>
+    {children}
+  </div>;
+}
+
+// ═══════════════════════════════════════════════════════════
+// LOGIN
+// ═══════════════════════════════════════════════════════════
+function LoginScreen({ members, onLogin }) {
+  const [no, setNo] = useState("");
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const handleLogin = async () => {
+    setBusy(true); setError("");
+    const { data, error } = await supabase.from("members")
+      .select("*").eq("no", parseInt(no)).eq("pin", pin).maybeSingle();
+    setBusy(false);
+    if (error || !data) { setError("Nomor anggota atau PIN salah."); return; }
+    onLogin({ no:data.no, name:data.name, isAdmin:data.is_admin });
+  };
+
+  return (
+    <div className="fade" style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{width:"100%",maxWidth:360}}>
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <div style={{fontSize:42,marginBottom:6}}>⚓</div>
+          <div style={{fontSize:11,color:C.muted,letterSpacing:2,textTransform:"uppercase"}}>Koperasi Simpan Pinjam</div>
+          <h1 style={{fontSize:22,fontWeight:700,margin:"4px 0",color:"#f8fafc"}}>The Power 55</h1>
+        </div>
+        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:20}}>
+          <label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>Nomor Anggota</label>
+          <input className="input" type="number" value={no} onChange={e=>{setNo(e.target.value);setError("");}} placeholder="Contoh: 6" style={{marginBottom:12}} />
+          <label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>PIN</label>
+          <input className="input" type="password" value={pin} onChange={e=>{setPin(e.target.value);setError("");}} placeholder="4 digit" onKeyDown={e=>e.key==="Enter"&&handleLogin()} />
+          {error && <div style={{fontSize:11,color:C.red,marginTop:8}}>{error}</div>}
+          <button className="btn btn-primary" style={{width:"100%",marginTop:14,padding:12}} disabled={!no||!pin||busy} onClick={handleLogin}>
+            {busy ? "Memeriksa…" : "Masuk"}
+          </button>
+          <div style={{fontSize:10,color:C.muted,marginTop:12,textAlign:"center",lineHeight:1.6}}>
+            Lupa PIN? Hubungi pengurus koperasi.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// HEADER
+// ═══════════════════════════════════════════════════════════
+function Header({ session, onLogout, badge }) {
+  return <div style={{borderBottom:`1px solid ${C.border}`,padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+    <div style={{display:"flex",alignItems:"center",gap:10}}>
+      <div style={{width:36,height:36,borderRadius:"50%",background:session.isAdmin?C.purple:getAvatarColor(session.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff"}}>
+        {session.isAdmin ? "👨‍💼" : getInitials(session.name)}
+      </div>
+      <div>
+        <div style={{fontSize:13,fontWeight:600}}>{session.name}</div>
+        <div style={{fontSize:10,color:C.muted,display:"flex",alignItems:"center",gap:6}}>
+          {session.isAdmin ? <Badge text="PENGURUS" color={C.purple} size={9}/> : <Badge text={`#${session.no}`} color={C.accent} size={9}/>}
+          {badge}
+        </div>
+      </div>
+    </div>
+    <button className="btn btn-secondary" style={{padding:"6px 12px",fontSize:11}} onClick={onLogout}>Logout</button>
+  </div>;
+}
+
+// ═══════════════════════════════════════════════════════════
+// METRICS
+// ═══════════════════════════════════════════════════════════
+function computeMetrics(member, loans) {
+  const my = loans.filter(l => l.member_no === member.no);
+  const done = my.filter(l => l.status === "lunas");
+  const active = my.filter(l => l.status !== "lunas");
+  const tier = getTier(done.length);
+  const join = new Date(member.join_year, (member.join_month||1)-1, 1);
+  const months = Math.max(0, Math.floor((Date.now()-join.getTime())/(1000*60*60*24*30.44)));
+  const expectedTW = months * (member.sw_rate||0);
+  const paidTW = member.sw_paid||0;
+  const outstandingTW = Math.max(0, expectedTW - paidTW);
+  const totalOutstanding = active.reduce((s,l)=>s+(l.sisa||0),0);
+  const totalBorrowed = my.reduce((s,l)=>s+(l.amount||0),0);
+  const totalAsset = 1000000 + paidTW + (member.shu_total||0);
+  return { tier, done, active, months, expectedTW, paidTW, outstandingTW, totalOutstanding, totalBorrowed, totalAsset };
+}
+
+// ═══════════════════════════════════════════════════════════
+// MEMBER PORTAL
+// ═══════════════════════════════════════════════════════════
+function MemberPortal({ member, loans, isAdminView }) {
+  const m = computeMetrics(member, loans);
+  const tier = TIERS[m.tier];
+  const nextKey = m.tier==="bronze"?"silver":m.tier==="silver"?"gold":m.tier==="gold"?"goldstar":null;
+  const need = m.tier==="bronze"?1:m.tier==="silver"?2:m.tier==="gold"?3:0;
+
+  return <div className="fade">
+    <div style={{background:`linear-gradient(135deg,${C.card} 0%,#0d2540 100%)`,border:`1px solid ${C.border}`,borderRadius:14,padding:20,marginBottom:16}}>
+      <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+        <div style={{width:70,height:70,borderRadius:"50%",background:getAvatarColor(member.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:700,color:"#fff",flexShrink:0}}>{getInitials(member.name)}</div>
+        <div style={{flex:1,minWidth:160}}>
+          <div style={{fontSize:11,color:C.muted,letterSpacing:1}}>NO. ANGGOTA {String(member.no).padStart(3,"0")}</div>
+          <h2 style={{fontSize:22,fontWeight:700,margin:"2px 0"}}>{member.name}</h2>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:6}}>
+            <Badge text={`Anggota sejak ${member.join_year}`} color={C.accent}/>
+            <Badge text={`${Math.floor(m.months/12)} thn ${m.months%12} bln`} color={C.muted}/>
+            <Badge text={`${tier.icon} ${tier.label}`} color={tier.color}/>
+            {isAdminView && <Badge text="DILIHAT PENGURUS" color={C.purple} size={9}/>}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:18}}>
+      <StatBox icon="💎" label="Total Aset" value={`Rp ${fmtJt(m.totalAsset)}`} sub="SP + Tab.Wajib + SHU" color={C.mint}/>
+      <StatBox icon="🏦" label="Simpanan Pokok" value="Rp 1jt"/>
+      <StatBox icon="💰" label="SHU Akumulasi" value={`Rp ${fmtJt(member.shu_total)}`} color={C.green}/>
+      <StatBox icon="📋" label="Pinjaman Lunas" value={`${m.done.length}×`} color={C.accent}/>
+    </div>
+
+    <SectionTitle icon="🏆" title="Level & Plafon Pinjaman"/>
+    <div style={{background:C.card,border:`2px solid ${tier.color}40`,borderRadius:14,padding:16,marginBottom:18}}>
+      <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+        <div style={{fontSize:42}}>{tier.icon}</div>
+        <div style={{flex:1,minWidth:160}}>
+          <div style={{fontSize:11,color:C.muted}}>Level saat ini</div>
+          <div style={{fontSize:22,fontWeight:700,color:tier.color}}>{tier.label}</div>
+          <div style={{fontSize:13,marginTop:2}}>Plafon: <strong>Rp {fmtJt(tier.min)} – Rp {fmtJt(tier.max)}</strong></div>
+        </div>
+        <div style={{textAlign:"right"}}>
+          <div style={{fontSize:11,color:C.muted}}>Lunas</div>
+          <div style={{fontSize:28,fontWeight:700,color:tier.color}}>{m.done.length}</div>
+        </div>
+      </div>
+      {nextKey && (
+        <div style={{marginTop:12,padding:"10px 12px",background:`${TIERS[nextKey].color}10`,borderRadius:8,borderLeft:`3px solid ${TIERS[nextKey].color}`}}>
+          <div style={{fontSize:11,color:C.muted}}>Naik level berikutnya:</div>
+          <div style={{fontSize:12,color:TIERS[nextKey].color,fontWeight:600,marginTop:2}}>
+            {Math.max(0,need-m.done.length)}× pinjaman lunas tepat waktu → {TIERS[nextKey].icon} {TIERS[nextKey].label}
+          </div>
+        </div>
+      )}
+    </div>
+
+    <SectionTitle icon="💵" title="Tabungan Wajib"/>
+    <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:16,marginBottom:18}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:14}}>
+        <div><div style={{fontSize:10,color:C.muted}}>Tarif/bulan</div><div style={{fontSize:15,fontWeight:700}}>Rp {fmt(member.sw_rate)}</div><div style={{fontSize:10,color:C.muted}}>Rp {fmt((member.sw_rate||0)*12)}/tahun</div></div>
+        <div><div style={{fontSize:10,color:C.muted}}>Sudah disetor</div><div style={{fontSize:15,fontWeight:700,color:C.green}}>Rp {fmt(m.paidTW)}</div></div>
+        <div><div style={{fontSize:10,color:C.muted}}>Seharusnya</div><div style={{fontSize:15,fontWeight:700}}>Rp {fmt(m.expectedTW)}</div><div style={{fontSize:10,color:C.muted}}>{m.months} bulan</div></div>
+        <div><div style={{fontSize:10,color:C.muted}}>Tunggakan</div><div style={{fontSize:15,fontWeight:700,color:m.outstandingTW>0?C.amber:C.green}}>Rp {fmt(m.outstandingTW)}</div></div>
+      </div>
+      <div style={{height:8,background:C.border,borderRadius:99,overflow:"hidden"}}>
+        <div style={{height:"100%",width:`${m.expectedTW?Math.min(100,m.paidTW/m.expectedTW*100):0}%`,background:m.outstandingTW===0?C.green:C.amber,borderRadius:99}}/>
+      </div>
+      <div style={{marginTop:12,padding:"10px 12px",background:m.outstandingTW>0?`${C.amber}10`:`${C.green}10`,borderRadius:8,borderLeft:`3px solid ${m.outstandingTW>0?C.amber:C.green}`,fontSize:11}}>
+        {m.outstandingTW>0
+          ? <span style={{color:C.amber}}>📌 Perlu setor <strong>Rp {fmt(m.outstandingTW)}</strong> (≈{Math.round(m.outstandingTW/(member.sw_rate||1))} bulan) untuk mengejar ketertinggalan.</span>
+          : <span style={{color:C.green}}>✓ Tabungan Wajib lancar, tidak ada tunggakan.</span>}
+      </div>
+    </div>
+
+    {m.active.length > 0 && <>
+      <SectionTitle icon="⏳" title={`Pinjaman Aktif (${m.active.length})`}/>
+      <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:18}}>
+        {m.active.map(l => <div key={l.id} style={{background:C.card,border:`1px solid ${C.amber}30`,borderRadius:12,padding:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+            <div>
+              <div style={{fontSize:14,fontWeight:600}}>Pinjaman {l.start_date ? new Date(l.start_date).getFullYear() : ""}</div>
+              <div style={{fontSize:10,color:C.muted}}>Tenor {l.tenor} bulan{l.last_pay ? ` · Bayar terakhir ${fmtDate(l.last_pay)}` : ""}</div>
+            </div>
+            <Badge text={l.status==="baru"?"BARU":"CICILAN"} color={l.status==="baru"?C.accent:C.amber}/>
+          </div>
+          <div style={{display:"flex",gap:14,flexWrap:"wrap",paddingTop:8,borderTop:`1px dashed ${C.border}`}}>
+            <div><div style={{fontSize:10,color:C.muted}}>Pinjaman</div><div style={{fontSize:14,fontWeight:600}}>Rp {fmt(l.amount)}</div></div>
+            <div><div style={{fontSize:10,color:C.muted}}>Sisa</div><div style={{fontSize:14,fontWeight:600,color:C.amber}}>Rp {fmt(l.sisa)}</div></div>
+            <div><div style={{fontSize:10,color:C.muted}}>Cicilan/bln</div><div style={{fontSize:14,fontWeight:600}}>Rp {fmt(l.amount/(l.tenor||1))}</div></div>
+          </div>
+        </div>)}
+      </div>
+    </>}
+
+    {m.done.length > 0 && <>
+      <SectionTitle icon="✅" title={`Riwayat Pinjaman Lunas (${m.done.length})`}/>
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:14,marginBottom:18,overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead><tr>
+            <th style={{textAlign:"left",padding:"7px 8px",borderBottom:`1px solid ${C.border}`,color:C.muted}}>Mulai</th>
+            <th style={{textAlign:"left",padding:"7px 8px",borderBottom:`1px solid ${C.border}`,color:C.muted}}>Nominal</th>
+            <th style={{textAlign:"left",padding:"7px 8px",borderBottom:`1px solid ${C.border}`,color:C.muted}}>Tenor</th>
+            <th style={{textAlign:"left",padding:"7px 8px",borderBottom:`1px solid ${C.border}`,color:C.muted}}>Lunas</th>
+          </tr></thead>
+          <tbody>{m.done.map(l => <tr key={l.id}>
+            <td style={{padding:"6px 8px"}}>{l.start_date ? fmtDate(l.start_date) : "-"}</td>
+            <td style={{padding:"6px 8px",fontWeight:600}}>Rp {fmt(l.amount)}</td>
+            <td style={{padding:"6px 8px",color:C.muted}}>{l.tenor} bln</td>
+            <td style={{padding:"6px 8px"}}><Badge text={`✓ ${l.lunas_date?fmtDate(l.lunas_date):"Lunas"}`} color={C.green}/></td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </>}
+
+    <SectionTitle icon="📊" title="Ringkasan Akun"/>
+    <div style={{background:`linear-gradient(135deg,${C.card} 0%,#0d2c3a 100%)`,border:`1px solid ${C.mint}30`,borderRadius:14,padding:18}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,fontSize:12}}>
+        <Row label="Simpanan Pokok" value="Rp 1.000.000"/>
+        <Row label="Tabungan Wajib" value={`Rp ${fmt(m.paidTW)}`}/>
+        <Row label="SHU Akumulasi" value={`Rp ${fmt(member.shu_total)}`} color={C.green}/>
+        <Row label="Hutang Pinjaman" value={`Rp ${fmt(m.totalOutstanding)}`} color={m.totalOutstanding>0?C.amber:C.muted}/>
+        <Row label="Tunggakan Tab.Wajib" value={`Rp ${fmt(m.outstandingTW)}`} color={m.outstandingTW>0?C.amber:C.muted}/>
+        <Row label="Total Pernah Pinjam" value={`Rp ${fmt(m.totalBorrowed)}`}/>
+      </div>
+      <div style={{marginTop:14,paddingTop:14,borderTop:`2px solid ${C.mint}30`,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+        <span style={{fontSize:13,fontWeight:600}}>EKUITAS BERSIH</span>
+        <strong style={{fontSize:22,fontWeight:700,color:C.mint}}>Rp {fmt(m.totalAsset - m.totalOutstanding - m.outstandingTW)}</strong>
+      </div>
+    </div>
+  </div>;
+}
+
+// ═══════════════════════════════════════════════════════════
+// MEMBER APP
+// ═══════════════════════════════════════════════════════════
+function MemberApp({ session, data, onLogout }) {
+  const [tab, setTab] = useState("home");
+  const member = data.members.find(m => m.no === session.no);
+  if (!member) return <Center>Data anggota tidak ditemukan.</Center>;
+
+  const m = computeMetrics(member, data.loans);
+  const tier = TIERS[m.tier];
+  const otherPolls = data.apps.filter(a => a.applicant_no !== session.no && a.status === "voting");
+  const myApps = data.apps.filter(a => a.applicant_no === session.no);
+  const unvoted = otherPolls.filter(a => !data.votes.find(v => v.application_id===a.id && v.voter_no===session.no)).length;
+  const myPending = myApps.filter(a => a.status==="voting"||a.status==="pending_approval").length;
+
+  const TABS = [
+    { id:"home", label:"Akun Saya", icon:"🏠" },
+    { id:"apply", label:"Ajukan", icon:"📝" },
+    { id:"vote", label:"Voting", icon:"🗳️", count:unvoted },
+    { id:"my", label:"Pengajuan", icon:"📋", count:myPending },
+  ];
+
+  return <div className="fade">
+    <Header session={session} onLogout={onLogout} badge={<Badge text={`${tier.icon} ${tier.label}`} color={tier.color} size={9}/>}/>
+    <div style={{display:"flex",gap:5,padding:"12px 20px 0",borderBottom:`1px solid ${C.border}`,overflowX:"auto"}}>
+      {TABS.map(t => <button key={t.id} className={`tab ${tab===t.id?"on":""}`} onClick={()=>setTab(t.id)}>
+        {t.icon} {t.label}
+        {t.count>0 && <span style={{marginLeft:5,padding:"1px 6px",background:C.red,color:"#fff",borderRadius:99,fontSize:9,fontWeight:700}}>{t.count}</span>}
+      </button>)}
+    </div>
+    <div style={{padding:"18px 20px",maxWidth:880,margin:"0 auto"}}>
+      {tab==="home" && <>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+          <button onClick={()=>setTab("apply")} style={{background:`${C.teal}15`,border:`1px solid ${C.teal}40`,borderRadius:10,padding:"12px 14px",textAlign:"left",cursor:"pointer",fontFamily:"inherit",color:C.text}}>
+            <div style={{fontSize:18,marginBottom:3}}>📝</div><div style={{fontSize:12,fontWeight:600}}>Ajukan Pinjaman/Jasa</div>
+          </button>
+          <button onClick={()=>setTab("vote")} style={{background:`${C.purple}15`,border:`1px solid ${C.purple}40`,borderRadius:10,padding:"12px 14px",textAlign:"left",cursor:"pointer",fontFamily:"inherit",color:C.text}}>
+            <div style={{fontSize:18,marginBottom:3}}>🗳️</div><div style={{fontSize:12,fontWeight:600}}>Voting Polling{unvoted>0 && <span style={{marginLeft:6,padding:"1px 6px",background:C.red,color:"#fff",borderRadius:99,fontSize:9}}>{unvoted}</span>}</div>
+          </button>
+        </div>
+        <MemberPortal member={member} loans={data.loans}/>
+      </>}
+      {tab==="apply" && <ApplyForm member={member} tier={tier} data={data} setTab={setTab}/>}
+      {tab==="vote" && <PollsList polls={otherPolls} data={data} session={session} canVote/>}
+      {tab==="my" && <MyApps apps={myApps} data={data}/>}
+    </div>
+  </div>;
+}
+
+function ApplyForm({ member, tier, data, setTab }) {
+  const [type, setType] = useState(null);
+  const [amount, setAmount] = useState("");
+  const [tenor, setTenor] = useState(3);
+  const [purpose, setPurpose] = useState("");
+  const [certType, setCertType] = useState("");
+  const [provider, setProvider] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [ok, setOk] = useState(false);
+  const [error, setError] = useState("");
+
+  const n = parseInt(amount.replace(/\D/g,"")) || 0;
+  const over = n > tier.max;
+  const under = n > 0 && n < tier.min;
+
+  const submit = async () => {
+    setBusy(true); setError("");
+    const deadline = new Date(Date.now() + 24*60*60*1000).toISOString();
+    const { error } = await supabase.from("applications").insert({
+      applicant_no: member.no, type, amount:n, tenor, purpose,
+      cert_type: type==="service"?certType:null,
+      provider: type==="service"?provider:null,
+      status:"voting", deadline,
+    });
+    setBusy(false);
+    if (error) { setError("Gagal mengirim: " + error.message); return; }
+    setOk(true); data.reload();
+    setTimeout(()=>setTab("my"), 1800);
+  };
+
+  if (ok) return <div className="fade" style={{textAlign:"center",padding:40}}>
+    <div style={{fontSize:52,marginBottom:14}}>✅</div>
+    <h2 style={{fontSize:18,fontWeight:700,color:C.green}}>Pengajuan Terkirim!</h2>
+    <p style={{fontSize:12,color:C.muted}}>Polling 24 jam sudah dibuka untuk semua anggota.</p>
+  </div>;
+
+  if (!type) return <div className="fade">
+    <h2 style={{fontSize:18,fontWeight:700,marginBottom:14}}>Jenis Pengajuan</h2>
+    <div style={{display:"grid",gap:10}}>
+      <button onClick={()=>setType("loan")} style={{background:C.card,border:`1px solid ${C.teal}40`,borderRadius:12,padding:18,textAlign:"left",cursor:"pointer",fontFamily:"inherit",color:C.text}}>
+        <div style={{display:"flex",gap:14,alignItems:"center"}}><div style={{fontSize:32}}>💰</div><div>
+          <div style={{fontSize:15,fontWeight:700}}>Pinjaman Tunai</div>
+          <div style={{fontSize:11,color:C.muted,marginTop:3}}>Dana cair ke rekening Anda.</div>
+        </div></div>
+      </button>
+      <button onClick={()=>setType("service")} style={{background:C.card,border:`1px solid ${C.purple}40`,borderRadius:12,padding:18,textAlign:"left",cursor:"pointer",fontFamily:"inherit",color:C.text}}>
+        <div style={{display:"flex",gap:14,alignItems:"center"}}><div style={{fontSize:32}}>📜</div><div>
+          <div style={{fontSize:15,fontWeight:700}}>Jasa Sertifikat / Dokumen</div>
+          <div style={{fontSize:11,color:C.muted,marginTop:3}}>Koperasi bayar langsung ke penyedia jasa.</div>
+        </div></div>
+      </button>
+    </div>
+  </div>;
+
+  return <div className="fade">
+    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+      <button className="btn btn-secondary" style={{padding:"6px 12px",fontSize:11}} onClick={()=>setType(null)}>← Kembali</button>
+      <h2 style={{fontSize:16,fontWeight:700,margin:0}}>{type==="loan"?"💰 Pinjaman Tunai":"📜 Jasa Sertifikat"}</h2>
+    </div>
+    <div style={{background:`${tier.color}15`,border:`1px solid ${tier.color}40`,borderRadius:10,padding:12,marginBottom:14,fontSize:12}}>
+      Level: <strong style={{color:tier.color}}>{tier.icon} {tier.label}</strong> · Plafon: <strong>Rp {fmt(tier.min)} – {fmt(tier.max)}</strong>
+    </div>
+    <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:14}}>
+      <div>
+        <label style={{fontSize:11,color:C.muted,display:"block",marginBottom:6}}>Jumlah (Rp)</label>
+        <input className="input" type="text" inputMode="numeric" value={amount} onChange={e=>setAmount(e.target.value.replace(/\D/g,""))} placeholder={`${fmt(tier.min)} - ${fmt(tier.max)}`}/>
+        {n>0 && <div style={{fontSize:11,marginTop:4,color:over?C.red:under?C.amber:C.green}}>
+          {over ? "⚠️ Melebihi plafon level Anda" : under ? `Minimum Rp ${fmt(tier.min)}` : `✓ Rp ${fmt(n)} — dalam plafon`}
+        </div>}
+      </div>
+      <div>
+        <label style={{fontSize:11,color:C.muted,display:"block",marginBottom:6}}>Tenor Cicilan</label>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>setTenor(3)} className={`btn ${tenor===3?"btn-primary":"btn-secondary"}`} style={{flex:1}}>3 Bulan</button>
+          <button onClick={()=>setTenor(6)} className={`btn ${tenor===6?"btn-primary":"btn-secondary"}`} style={{flex:1}}>6 Bulan</button>
+        </div>
+        {n>0 && <div style={{fontSize:11,color:C.muted,marginTop:6}}>Cicilan/bulan: <strong style={{color:C.text}}>Rp {fmt(n/tenor)}</strong></div>}
+      </div>
+      {type==="service" && <>
+        <div>
+          <label style={{fontSize:11,color:C.muted,display:"block",marginBottom:6}}>Jenis Sertifikat/Dokumen</label>
+          <select className="input" value={certType} onChange={e=>setCertType(e.target.value)}>
+            <option value="">-- Pilih --</option>
+            {CERT_TYPES.map(c=><option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{fontSize:11,color:C.muted,display:"block",marginBottom:6}}>Penyedia Jasa / Lembaga</label>
+          <input className="input" type="text" value={provider} onChange={e=>setProvider(e.target.value)} placeholder="Contoh: BP3IP Jakarta"/>
+        </div>
+      </>}
+      <div>
+        <label style={{fontSize:11,color:C.muted,display:"block",marginBottom:6}}>Tujuan / Keterangan</label>
+        <textarea className="input" rows={3} value={purpose} onChange={e=>setPurpose(e.target.value)} placeholder="Jelaskan singkat…" style={{resize:"vertical"}}/>
+      </div>
+      {error && <div style={{fontSize:11,color:C.red}}>{error}</div>}
+      <div style={{padding:12,background:`${C.amber}10`,border:`1px solid ${C.amber}30`,borderRadius:8,fontSize:11,color:C.muted}}>
+        <strong style={{color:C.amber}}>📌</strong> Setelah submit: polling 24 jam untuk semua anggota, lalu keputusan pengurus.
+      </div>
+      <button className="btn btn-primary" style={{padding:12,fontSize:14}} disabled={busy||over||under||!n||!purpose.trim()||(type==="service"&&(!certType||!provider.trim()))} onClick={submit}>
+        {busy?"Mengirim…":"🚀 Submit Pengajuan"}
+      </button>
+    </div>
+  </div>;
+}
+
+function PollsList({ polls, data, session, canVote }) {
+  const [busyId, setBusyId] = useState(null);
+
+  const vote = async (appId, val) => {
+    setBusyId(appId);
+    await supabase.from("votes").upsert(
+      { application_id: appId, voter_no: session.no, vote: val },
+      { onConflict: "application_id,voter_no" }
+    );
+    await data.reload();
+    setBusyId(null);
+  };
+
+  if (!polls.length) return <div style={{textAlign:"center",padding:40,color:C.muted,fontSize:13}}>
+    <div style={{fontSize:42,marginBottom:10}}>🗳️</div>Tidak ada polling aktif.
+  </div>;
+
+  return <div className="fade" style={{display:"flex",flexDirection:"column",gap:12}}>
+    {polls.map(p => {
+      const vs = data.votes.filter(v => v.application_id === p.id);
+      const yes = vs.filter(v=>v.vote==="yes").length;
+      const no = vs.filter(v=>v.vote==="no").length;
+      const ab = vs.filter(v=>v.vote==="abstain").length;
+      const mine = session ? vs.find(v=>v.voter_no===session.no)?.vote : null;
+      const applicant = data.members.find(m=>m.no===p.applicant_no);
+      const t = TIERS[getTier(data.loans.filter(l=>l.member_no===p.applicant_no&&l.status==="lunas").length)];
+      const expired = new Date(p.deadline) <= new Date();
+
+      return <div key={p.id} style={{background:C.card,border:`1px solid ${mine?C.green+"40":C.border}`,borderRadius:12,padding:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+          <div>
+            <div style={{fontSize:14,fontWeight:700}}>{applicant?.name || `Anggota #${p.applicant_no}`}</div>
+            <div style={{fontSize:10,color:C.muted}}>{t.icon} {t.label} · {timeAgo(p.created_at)}</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <Badge text={p.type==="loan"?"💰 PINJAMAN":"📜 JASA"} color={p.type==="loan"?C.teal:C.purple}/>
+            <div style={{fontSize:11,color:expired?C.red:C.amber,marginTop:4,fontWeight:600}}>⏱️ {expired?"Selesai":`${timeUntil(p.deadline)} lagi`}</div>
+          </div>
+        </div>
+        <div style={{background:C.dark,padding:10,borderRadius:8,marginBottom:10,fontSize:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:C.muted}}>Jumlah:</span><strong style={{color:C.mint}}>Rp {fmt(p.amount)}</strong></div>
+          <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.muted}}>Tenor:</span><strong>{p.tenor} bulan (Rp {fmt(p.amount/(p.tenor||1))}/bln)</strong></div>
+          {p.cert_type && <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}><span style={{color:C.muted}}>Sertifikat:</span><strong>{p.cert_type}</strong></div>}
+          {p.provider && <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}><span style={{color:C.muted}}>Penyedia:</span><strong>{p.provider}</strong></div>}
+          <div style={{marginTop:6,paddingTop:6,borderTop:`1px dashed ${C.border}`,fontSize:11,color:C.muted,fontStyle:"italic"}}>"{p.purpose}"</div>
+        </div>
+        {(yes+no+ab)>0 && <div style={{display:"flex",gap:4,fontSize:10,fontWeight:600,marginBottom:10}}>
+          {yes>0 && <div style={{flex:yes,background:`${C.green}40`,color:C.green,padding:"4px 8px",borderRadius:4,textAlign:"center"}}>✅ {yes}</div>}
+          {no>0 && <div style={{flex:no,background:`${C.red}40`,color:C.red,padding:"4px 8px",borderRadius:4,textAlign:"center"}}>❌ {no}</div>}
+          {ab>0 && <div style={{flex:ab,background:`${C.muted}40`,color:C.muted,padding:"4px 8px",borderRadius:4,textAlign:"center"}}>🤷 {ab}</div>}
+        </div>}
+        {canVote && !expired && (mine
+          ? <div style={{padding:10,background:`${C.green}10`,borderRadius:8,fontSize:11,color:C.green,textAlign:"center"}}>
+              ✓ Anda voting: <strong>{mine==="yes"?"Setuju":mine==="no"?"Tolak":"Abstain"}</strong> — klik lagi untuk ubah
+            </div>
+          : null)}
+        {canVote && !expired && <div style={{display:"flex",gap:6,marginTop:mine?8:0}}>
+          <button className="btn btn-success" style={{flex:1}} disabled={busyId===p.id} onClick={()=>vote(p.id,"yes")}>✅ Setuju</button>
+          <button className="btn btn-danger" style={{flex:1}} disabled={busyId===p.id} onClick={()=>vote(p.id,"no")}>❌ Tolak</button>
+          <button className="btn btn-secondary" style={{flex:1}} disabled={busyId===p.id} onClick={()=>vote(p.id,"abstain")}>🤷 Abstain</button>
+        </div>}
+      </div>;
+    })}
+  </div>;
+}
+
+function MyApps({ apps, data }) {
+  if (!apps.length) return <div style={{textAlign:"center",padding:40,color:C.muted,fontSize:13}}>
+    <div style={{fontSize:42,marginBottom:10}}>📋</div>Belum ada pengajuan.
+  </div>;
+  return <div className="fade" style={{display:"flex",flexDirection:"column",gap:10}}>
+    {apps.map(p => {
+      const vs = data.votes.filter(v=>v.application_id===p.id);
+      const yes = vs.filter(v=>v.vote==="yes").length, no = vs.filter(v=>v.vote==="no").length;
+      const info = p.status==="voting" ? {label:`🗳️ Polling (${timeUntil(p.deadline)} lagi)`,color:C.amber}
+        : p.status==="pending_approval" ? {label:"⏳ Menunggu Pengurus",color:C.accent}
+        : p.status==="approved" ? {label:"✅ DISETUJUI",color:C.green}
+        : {label:"❌ DITOLAK",color:C.red};
+      return <div key={p.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:600}}>{p.type==="loan"?"💰 Pinjaman":"📜 Jasa"} Rp {fmt(p.amount)}</div>
+            <div style={{fontSize:10,color:C.muted}}>{timeAgo(p.created_at)} · Tenor {p.tenor} bulan</div>
+          </div>
+          <Badge text={info.label} color={info.color}/>
+        </div>
+        <div style={{fontSize:11,color:C.muted,fontStyle:"italic"}}>"{p.purpose}"</div>
+        {(p.status==="voting"||p.status==="pending_approval") &&
+          <div style={{fontSize:11,color:C.muted,marginTop:6}}>Voting: <strong style={{color:C.green}}>{yes} setuju</strong> · <strong style={{color:C.red}}>{no} tolak</strong></div>}
+      </div>;
+    })}
+  </div>;
+}
+
+// ═══════════════════════════════════════════════════════════
+// ADMIN APP
+// ═══════════════════════════════════════════════════════════
+function AdminApp({ session, data, onLogout }) {
+  const [tab, setTab] = useState("dashboard");
+  const [viewNo, setViewNo] = useState(null);
+
+  const pending = data.apps.filter(a => a.status === "pending_approval");
+  const voting = data.apps.filter(a => a.status === "voting");
+  const decided = data.apps.filter(a => ["approved","rejected"].includes(a.status));
+
+  const TABS = [
+    { id:"dashboard", label:"Dashboard", icon:"📊" },
+    { id:"approval", label:"Approval", icon:"✅", count:pending.length },
+    { id:"voting", label:"Polling", icon:"🗳️", count:voting.length },
+    { id:"members", label:"Anggota", icon:"👥" },
+    { id:"loans", label:"Pinjaman", icon:"💳" },
+    { id:"buku", label:"Pembukuan", icon:"💰" },
+    { id:"history", label:"Riwayat", icon:"📋" },
+  ];
+
+  return <div className="fade">
+    <Header session={session} onLogout={onLogout}/>
+    <div style={{display:"flex",gap:5,padding:"12px 20px 0",borderBottom:`1px solid ${C.border}`,overflowX:"auto"}}>
+      {TABS.map(t => <button key={t.id} className={`tab ${tab===t.id?"on":""}`} onClick={()=>{setTab(t.id);setViewNo(null);}}>
+        {t.icon} {t.label}
+        {t.count>0 && <span style={{marginLeft:5,padding:"1px 6px",background:C.red,color:"#fff",borderRadius:99,fontSize:9,fontWeight:700}}>{t.count}</span>}
+      </button>)}
+    </div>
+    <div style={{padding:"18px 20px",maxWidth:900,margin:"0 auto"}}>
+      {tab==="dashboard" && <AdminDash data={data} pending={pending.length} voting={voting.length} setTab={setTab}/>}
+      {tab==="approval" && <Approval apps={pending} data={data}/>}
+      {tab==="voting" && <PollsList polls={voting} data={data} session={session}/>}
+      {tab==="members" && (viewNo
+        ? <div className="fade">
+            <button className="btn btn-secondary" style={{marginBottom:14,padding:"6px 12px",fontSize:11}} onClick={()=>setViewNo(null)}>← Kembali</button>
+            <MemberPortal member={data.members.find(m=>m.no===viewNo)} loans={data.loans} isAdminView/>
+          </div>
+        : <MembersList data={data} onSelect={setViewNo}/>)}
+      {tab==="loans" && <LoansAdmin data={data}/>}
+      {tab==="buku" && <Pembukuan data={data}/>}
+      {tab==="history" && <History apps={decided} data={data}/>}
+    </div>
+  </div>;
+}
+
+function AdminDash({ data, pending, voting, setTab }) {
+  const totalKas = data.banks.reduce((s,b)=>s+(b.balance||0),0);
+  const now = new Date();
+  const thisMonth = data.txs.filter(t => {
+    const d = new Date(t.date);
+    return d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear();
+  });
+  const masuk = thisMonth.filter(t=>t.type==="in").reduce((s,t)=>s+t.amount,0);
+  const keluar = thisMonth.filter(t=>t.type==="out").reduce((s,t)=>s+t.amount,0);
+  const outstanding = data.loans.filter(l=>l.status!=="lunas").reduce((s,l)=>s+(l.sisa||0),0);
+
+  return <div className="fade">
+    <h2 style={{fontSize:18,fontWeight:700,marginBottom:14}}>Dashboard Pengurus</h2>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:18}}>
+      <div onClick={()=>setTab("approval")} style={{background:pending>0?`${C.red}15`:C.card,border:`1px solid ${pending>0?C.red+"40":C.border}`,borderRadius:12,padding:14,cursor:"pointer"}}>
+        <div style={{fontSize:11,color:C.muted}}>⏳ Butuh Approval</div>
+        <div style={{fontSize:24,fontWeight:700,color:pending>0?C.red:C.text}}>{pending}</div>
+      </div>
+      <div onClick={()=>setTab("voting")} style={{background:voting>0?`${C.amber}15`:C.card,border:`1px solid ${voting>0?C.amber+"40":C.border}`,borderRadius:12,padding:14,cursor:"pointer"}}>
+        <div style={{fontSize:11,color:C.muted}}>🗳️ Polling Aktif</div>
+        <div style={{fontSize:24,fontWeight:700,color:voting>0?C.amber:C.text}}>{voting}</div>
+      </div>
+      <div onClick={()=>setTab("buku")} style={{background:C.card,border:`1px solid ${C.mint}40`,borderRadius:12,padding:14,cursor:"pointer"}}>
+        <div style={{fontSize:11,color:C.muted}}>💰 Total Kas</div>
+        <div style={{fontSize:20,fontWeight:700,color:C.mint}}>Rp {fmtJt(totalKas)}</div>
+      </div>
+      <div onClick={()=>setTab("loans")} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:14,cursor:"pointer"}}>
+        <div style={{fontSize:11,color:C.muted}}>💳 Piutang Aktif</div>
+        <div style={{fontSize:20,fontWeight:700,color:C.amber}}>Rp {fmtJt(outstanding)}</div>
+      </div>
+    </div>
+    <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16,marginBottom:14}}>
+      <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>💵 Arus Kas Bulan Ini</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10}}>
+        <div style={{padding:"8px 12px",background:`${C.green}15`,borderRadius:8,borderLeft:`3px solid ${C.green}`}}>
+          <div style={{fontSize:10,color:C.muted}}>Pemasukan</div><div style={{fontSize:16,fontWeight:700,color:C.green}}>Rp {fmt(masuk)}</div>
+        </div>
+        <div style={{padding:"8px 12px",background:`${C.red}15`,borderRadius:8,borderLeft:`3px solid ${C.red}`}}>
+          <div style={{fontSize:10,color:C.muted}}>Pengeluaran</div><div style={{fontSize:16,fontWeight:700,color:C.red}}>Rp {fmt(keluar)}</div>
+        </div>
+        <div style={{padding:"8px 12px",background:`${masuk-keluar>=0?C.mint:C.amber}15`,borderRadius:8,borderLeft:`3px solid ${masuk-keluar>=0?C.mint:C.amber}`}}>
+          <div style={{fontSize:10,color:C.muted}}>Net</div><div style={{fontSize:16,fontWeight:700,color:masuk-keluar>=0?C.mint:C.amber}}>Rp {fmt(masuk-keluar)}</div>
+        </div>
+      </div>
+    </div>
+    <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16,fontSize:11,color:C.muted,lineHeight:2}}>
+      <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:8}}>📋 Alur Kerja</div>
+      <div>1️⃣ Anggota ajukan lewat aplikasi → polling 24 jam otomatis dibuka</div>
+      <div>2️⃣ Anggota lain voting (setuju/tolak/abstain)</div>
+      <div>3️⃣ Setelah 24 jam sistem tutup polling → masuk tab <strong style={{color:C.text}}>Approval</strong></div>
+      <div>4️⃣ Anda putuskan → jika disetujui, catat pencairan di <strong style={{color:C.text}}>Pembukuan</strong></div>
+    </div>
+  </div>;
+}
+
+function Approval({ apps, data }) {
+  const [busy, setBusy] = useState(null);
+
+  const decide = async (app, status) => {
+    setBusy(app.id);
+    await supabase.from("applications").update({ status, decided_at:new Date().toISOString() }).eq("id", app.id);
+    if (status === "approved") {
+      await supabase.from("loans").insert({
+        member_no: app.applicant_no, amount: app.amount, tenor: app.tenor,
+        status: "baru", start_date: new Date().toISOString().split("T")[0], sisa: app.amount,
+      });
+    }
+    await data.reload();
+    setBusy(null);
+  };
+
+  if (!apps.length) return <div style={{textAlign:"center",padding:40,color:C.muted,fontSize:13}}>
+    <div style={{fontSize:42,marginBottom:10}}>✨</div>Tidak ada pengajuan menunggu keputusan.
+  </div>;
+
+  return <div className="fade">
+    <div style={{background:`${C.amber}10`,border:`1px solid ${C.amber}30`,borderRadius:12,padding:14,marginBottom:14,fontSize:12,color:C.amber,fontWeight:600}}>
+      ⏳ {apps.length} pengajuan menunggu keputusan Anda
+    </div>
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {apps.map(p => {
+        const vs = data.votes.filter(v=>v.application_id===p.id);
+        const yes = vs.filter(v=>v.vote==="yes").length, no = vs.filter(v=>v.vote==="no").length, ab = vs.filter(v=>v.vote==="abstain").length;
+        const applicant = data.members.find(m=>m.no===p.applicant_no);
+        return <div key={p.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+            <div>
+              <div style={{fontSize:15,fontWeight:700}}>{applicant?.name}</div>
+              <div style={{fontSize:10,color:C.muted}}>Diajukan {timeAgo(p.created_at)}</div>
+            </div>
+            <Badge text={p.type==="loan"?"💰 PINJAMAN":"📜 JASA"} color={p.type==="loan"?C.teal:C.purple}/>
+          </div>
+          <div style={{background:C.dark,padding:12,borderRadius:8,marginBottom:12}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:10,fontSize:12}}>
+              <div><div style={{fontSize:10,color:C.muted}}>Jumlah</div><div style={{fontWeight:700,color:C.mint}}>Rp {fmt(p.amount)}</div></div>
+              <div><div style={{fontSize:10,color:C.muted}}>Tenor</div><div style={{fontWeight:700}}>{p.tenor} bulan</div></div>
+              <div><div style={{fontSize:10,color:C.muted}}>Cicilan/bln</div><div style={{fontWeight:700}}>Rp {fmt(p.amount/(p.tenor||1))}</div></div>
+            </div>
+            <div style={{marginTop:10,paddingTop:10,borderTop:`1px dashed ${C.border}`,fontSize:12}}>
+              {p.purpose}
+              {p.cert_type && <div style={{fontSize:11,color:C.muted,marginTop:4}}>{p.cert_type} · {p.provider}</div>}
+            </div>
+          </div>
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:11,color:C.muted,marginBottom:6}}>Hasil voting ({vs.length} anggota):</div>
+            <div style={{display:"flex",gap:6,fontSize:11}}>
+              <div style={{flex:yes||1,background:`${C.green}30`,color:C.green,padding:"6px 10px",borderRadius:6,textAlign:"center",fontWeight:600}}>✅ {yes}</div>
+              <div style={{flex:no||1,background:`${C.red}30`,color:C.red,padding:"6px 10px",borderRadius:6,textAlign:"center",fontWeight:600}}>❌ {no}</div>
+              <div style={{flex:ab||1,background:`${C.muted}30`,color:C.muted,padding:"6px 10px",borderRadius:6,textAlign:"center",fontWeight:600}}>🤷 {ab}</div>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button className="btn btn-danger" style={{flex:1}} disabled={busy===p.id} onClick={()=>decide(p,"rejected")}>❌ Tolak</button>
+            <button className="btn btn-success" style={{flex:1}} disabled={busy===p.id} onClick={()=>decide(p,"approved")}>✅ Setujui</button>
+          </div>
+          <div style={{fontSize:10,color:C.muted,marginTop:8,textAlign:"center"}}>
+            Jika disetujui, pinjaman otomatis tercatat. Jangan lupa catat pencairan di tab Pembukuan.
+          </div>
+        </div>;
+      })}
+    </div>
+  </div>;
+}
+
+function MembersList({ data, onSelect }) {
+  const [q, setQ] = useState("");
+  const [edit, setEdit] = useState(null);
+  const list = data.members.filter(m => !m.is_admin && (!q || m.name.toLowerCase().includes(q.toLowerCase())));
+
+  return <div className="fade">
+    <input className="input" placeholder="🔍 Cari nama anggota…" value={q} onChange={e=>setQ(e.target.value)} style={{marginBottom:14}}/>
+    <div style={{fontSize:11,color:C.muted,marginBottom:10}}>{list.length} anggota · klik kartu untuk portal lengkap, klik ✏️ untuk edit data</div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:10}}>
+      {list.map(m => {
+        const mx = computeMetrics(m, data.loans);
+        const t = TIERS[mx.tier];
+        return <div key={m.no} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:12,display:"flex",alignItems:"center",gap:10}}>
+          <div onClick={()=>onSelect(m.no)} style={{width:38,height:38,borderRadius:"50%",background:getAvatarColor(m.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"#fff",flexShrink:0,cursor:"pointer"}}>{getInitials(m.name)}</div>
+          <div onClick={()=>onSelect(m.no)} style={{flex:1,minWidth:0,cursor:"pointer"}}>
+            <div style={{fontSize:13,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{m.name}</div>
+            <div style={{fontSize:10,color:C.muted}}>#{m.no} · {mx.done.length}× lunas{mx.outstandingTW>0 && <span style={{color:C.amber}}> · nunggak TW</span>}</div>
+          </div>
+          <span style={{fontSize:15}}>{t.icon}</span>
+          <button onClick={()=>setEdit(m)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:13}} title="Edit">✏️</button>
+        </div>;
+      })}
+    </div>
+    {edit && <EditMemberModal member={edit} data={data} onClose={()=>setEdit(null)}/>}
+  </div>;
+}
+
+function EditMemberModal({ member, data, onClose }) {
+  const [swRate, setSwRate] = useState(String(member.sw_rate||0));
+  const [swPaid, setSwPaid] = useState(String(member.sw_paid||0));
+  const [shu, setShu] = useState(String(member.shu_total||0));
+  const [pin, setPin] = useState(member.pin||"");
+  const [status, setStatus] = useState(member.status||"aktif");
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    await supabase.from("members").update({
+      sw_rate: parseInt(swRate)||0,
+      sw_paid: parseInt(swPaid)||0,
+      shu_total: parseInt(shu)||0,
+      pin, status,
+    }).eq("no", member.no);
+    await data.reload();
+    setBusy(false); onClose();
+  };
+
+  return <Modal title={`Edit: ${member.name}`} onClose={onClose}>
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>Tabungan Wajib per bulan (Rp)</label>
+        <input className="input" value={swRate} onChange={e=>setSwRate(e.target.value.replace(/\D/g,""))}/></div>
+      <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>Total Tabungan Wajib sudah disetor (Rp)</label>
+        <input className="input" value={swPaid} onChange={e=>setSwPaid(e.target.value.replace(/\D/g,""))}/></div>
+      <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>SHU akumulasi (Rp)</label>
+        <input className="input" value={shu} onChange={e=>setShu(e.target.value.replace(/\D/g,""))}/></div>
+      <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>PIN login anggota</label>
+        <input className="input" value={pin} onChange={e=>setPin(e.target.value)}/></div>
+      <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>Status</label>
+        <select className="input" value={status} onChange={e=>setStatus(e.target.value)}>
+          <option value="aktif">Aktif</option><option value="non-aktif">Non-aktif</option>
+        </select></div>
+      <div style={{display:"flex",gap:8,marginTop:6}}>
+        <button className="btn btn-secondary" style={{flex:1}} onClick={onClose}>Batal</button>
+        <button className="btn btn-primary" style={{flex:1}} disabled={busy} onClick={save}>{busy?"Menyimpan…":"💾 Simpan"}</button>
+      </div>
+    </div>
+  </Modal>;
+}
+
+function LoansAdmin({ data }) {
+  const [filter, setFilter] = useState("active");
+  const [pay, setPay] = useState(null);
+
+  const list = data.loans
+    .filter(l => filter==="all" ? true : filter==="active" ? l.status!=="lunas" : l.status==="lunas")
+    .sort((a,b)=> new Date(b.start_date||0) - new Date(a.start_date||0));
+
+  return <div className="fade">
+    <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+      {[{id:"active",l:"⏳ Aktif"},{id:"lunas",l:"✅ Lunas"},{id:"all",l:"Semua"}].map(f=>
+        <button key={f.id} className={`subtab ${filter===f.id?"on":""}`} onClick={()=>setFilter(f.id)}>{f.l}</button>)}
+    </div>
+    <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:14,overflowX:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+        <thead><tr>
+          {["Anggota","Nominal","Tenor","Mulai","Sisa","Status",""].map(h=>
+            <th key={h} style={{textAlign:"left",padding:"8px",borderBottom:`1px solid ${C.border}`,color:C.muted,fontWeight:600,fontSize:11}}>{h}</th>)}
+        </tr></thead>
+        <tbody>{list.map(l => {
+          const mem = data.members.find(m=>m.no===l.member_no);
+          return <tr key={l.id} style={{borderTop:`1px solid ${C.border}40`}}>
+            <td style={{padding:"8px"}}>{mem?.name || `#${l.member_no}`}</td>
+            <td style={{padding:"8px"}}>Rp {fmt(l.amount)}</td>
+            <td style={{padding:"8px",color:C.muted}}>{l.tenor} bln</td>
+            <td style={{padding:"8px",color:C.muted,fontSize:11}}>{fmtDate(l.start_date)}</td>
+            <td style={{padding:"8px",fontWeight:600,color:l.status==="lunas"?C.green:C.amber}}>{l.status==="lunas"?"−":`Rp ${fmt(l.sisa)}`}</td>
+            <td style={{padding:"8px"}}><Badge text={l.status==="lunas"?"LUNAS":l.status==="baru"?"BARU":"CICILAN"} color={l.status==="lunas"?C.green:l.status==="baru"?C.accent:C.amber}/></td>
+            <td style={{padding:"8px"}}>{l.status!=="lunas" && <button className="btn btn-secondary" style={{padding:"4px 10px",fontSize:10}} onClick={()=>setPay(l)}>Bayar</button>}</td>
+          </tr>;
+        })}</tbody>
+      </table>
+      {!list.length && <div style={{textAlign:"center",padding:20,color:C.muted,fontSize:12}}>Tidak ada data.</div>}
+    </div>
+    {pay && <PaymentModal loan={pay} data={data} onClose={()=>setPay(null)}/>}
+  </div>;
+}
+
+function PaymentModal({ loan, data, onClose }) {
+  const [amount, setAmount] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [bankId, setBankId] = useState(data.banks[0]?.id || "");
+  const [busy, setBusy] = useState(false);
+  const mem = data.members.find(m=>m.no===loan.member_no);
+  const n = parseInt(amount.replace(/\D/g,""))||0;
+  const newSisa = Math.max(0, (loan.sisa||0) - n);
+  const willLunas = newSisa === 0;
+
+  const save = async () => {
+    setBusy(true);
+    await supabase.from("loans").update({
+      sisa: newSisa,
+      last_pay: date,
+      status: willLunas ? "lunas" : "cicil",
+      lunas_date: willLunas ? date : null,
+    }).eq("id", loan.id);
+
+    await supabase.from("transactions").insert({
+      date, type:"in", category: willLunas ? "lunas" : "cicilan",
+      amount:n, bank_id: bankId || null, member_no: loan.member_no,
+      description: `Angsuran pinjaman ${mem?.name||""}`,
+    });
+
+    if (willLunas) {
+      const done = data.loans.filter(l=>l.member_no===loan.member_no && l.status==="lunas").length + 1;
+      await supabase.from("members").update({ completed_loans: done }).eq("no", loan.member_no);
+    }
+    await data.reload();
+    setBusy(false); onClose();
+  };
+
+  return <Modal title={`Catat Angsuran — ${mem?.name}`} onClose={onClose}>
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{background:C.dark,padding:12,borderRadius:8,fontSize:12}}>
+        <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.muted}}>Pinjaman:</span><strong>Rp {fmt(loan.amount)}</strong></div>
+        <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}><span style={{color:C.muted}}>Sisa saat ini:</span><strong style={{color:C.amber}}>Rp {fmt(loan.sisa)}</strong></div>
+      </div>
+      <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>Tanggal Bayar</label>
+        <input className="input" type="date" value={date} onChange={e=>setDate(e.target.value)}/></div>
+      <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>Jumlah Angsuran (Rp)</label>
+        <input className="input" value={amount} onChange={e=>setAmount(e.target.value.replace(/\D/g,""))} placeholder="0"/>
+        {n>0 && <div style={{fontSize:11,marginTop:4,color:willLunas?C.green:C.muted}}>
+          Sisa setelah bayar: <strong>Rp {fmt(newSisa)}</strong> {willLunas && "→ 🎉 LUNAS, level anggota naik!"}
+        </div>}</div>
+      <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>Masuk ke rekening</label>
+        <select className="input" value={bankId} onChange={e=>setBankId(e.target.value)}>
+          {data.banks.map(b=><option key={b.id} value={b.id}>{b.name} — Rp {fmt(b.balance)}</option>)}
+        </select></div>
+      <div style={{display:"flex",gap:8,marginTop:6}}>
+        <button className="btn btn-secondary" style={{flex:1}} onClick={onClose}>Batal</button>
+        <button className="btn btn-primary" style={{flex:1}} disabled={busy||!n} onClick={save}>{busy?"Menyimpan…":"💾 Catat"}</button>
+      </div>
+    </div>
+  </Modal>;
+}
+
+function History({ apps, data }) {
+  if (!apps.length) return <div style={{textAlign:"center",padding:40,color:C.muted,fontSize:13}}>Belum ada riwayat keputusan.</div>;
+  return <div className="fade" style={{display:"flex",flexDirection:"column",gap:8}}>
+    {apps.map(p => {
+      const mem = data.members.find(m=>m.no===p.applicant_no);
+      return <div key={p.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:12,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+        <div style={{flex:1,minWidth:150}}>
+          <div style={{fontSize:13,fontWeight:600}}>{mem?.name}</div>
+          <div style={{fontSize:10,color:C.muted}}>{p.type==="loan"?"Pinjaman":"Jasa"} Rp {fmt(p.amount)} · {p.tenor} bln</div>
+        </div>
+        <Badge text={p.status==="approved"?"✅ DISETUJUI":"❌ DITOLAK"} color={p.status==="approved"?C.green:C.red}/>
+        <div style={{fontSize:10,color:C.muted}}>{p.decided_at ? timeAgo(p.decided_at) : ""}</div>
+      </div>;
+    })}
+  </div>;
+}
+
+// ═══════════════════════════════════════════════════════════
+// PEMBUKUAN
+// ═══════════════════════════════════════════════════════════
+function Pembukuan({ data }) {
+  const [sub, setSub] = useState("saldo");
+  const [txForm, setTxForm] = useState(false);
+  const [bankForm, setBankForm] = useState(false);
+  const [editBank, setEditBank] = useState(null);
+
+  const totalKas = data.banks.reduce((s,b)=>s+(b.balance||0),0);
+  const masuk = data.txs.filter(t=>t.type==="in").reduce((s,t)=>s+t.amount,0);
+  const keluar = data.txs.filter(t=>t.type==="out").reduce((s,t)=>s+t.amount,0);
+
+  return <div className="fade">
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
+      <h2 style={{fontSize:18,fontWeight:700,margin:0}}>💰 Pembukuan</h2>
+      <div style={{display:"flex",gap:6}}>
+        <button className="btn btn-secondary" style={{padding:"7px 12px",fontSize:11}} onClick={()=>setBankForm(true)}>+ Rekening</button>
+        <button className="btn btn-primary" style={{padding:"7px 12px",fontSize:11}} onClick={()=>setTxForm(true)}>+ Transaksi</button>
+      </div>
+    </div>
+
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:14}}>
+      <div style={{background:`linear-gradient(135deg,${C.mint}20 0%,${C.card} 100%)`,border:`1px solid ${C.mint}40`,borderRadius:12,padding:14}}>
+        <div style={{fontSize:11,color:C.muted}}>💎 Total Kas</div>
+        <div style={{fontSize:24,fontWeight:700,color:C.mint}}>Rp {fmt(totalKas)}</div>
+        <div style={{fontSize:10,color:C.muted,marginTop:3}}>{data.banks.length} rekening</div>
+      </div>
+      <div style={{background:C.card,border:`1px solid ${C.green}30`,borderRadius:12,padding:14}}>
+        <div style={{fontSize:11,color:C.muted}}>📈 Total Masuk</div>
+        <div style={{fontSize:18,fontWeight:700,color:C.green}}>Rp {fmt(masuk)}</div>
+      </div>
+      <div style={{background:C.card,border:`1px solid ${C.red}30`,borderRadius:12,padding:14}}>
+        <div style={{fontSize:11,color:C.muted}}>📉 Total Keluar</div>
+        <div style={{fontSize:18,fontWeight:700,color:C.red}}>Rp {fmt(keluar)}</div>
+      </div>
+    </div>
+
+    <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+      <button className={`subtab ${sub==="saldo"?"on":""}`} onClick={()=>setSub("saldo")}>🏦 Saldo Bank</button>
+      <button className={`subtab ${sub==="tx"?"on":""}`} onClick={()=>setSub("tx")}>📝 Transaksi</button>
+      <button className={`subtab ${sub==="ring"?"on":""}`} onClick={()=>setSub("ring")}>📊 Ringkasan</button>
+    </div>
+
+    {sub==="saldo" && <BanksView data={data} onEdit={setEditBank} onAdd={()=>setBankForm(true)}/>}
+    {sub==="tx" && <TxView data={data}/>}
+    {sub==="ring" && <SummaryView txs={data.txs}/>}
+
+    {txForm && <TxModal data={data} onClose={()=>setTxForm(false)}/>}
+    {bankForm && <BankModal data={data} onClose={()=>setBankForm(false)}/>}
+    {editBank && <BankModal data={data} bank={editBank} onClose={()=>setEditBank(null)}/>}
+  </div>;
+}
+
+function BanksView({ data, onEdit, onAdd }) {
+  const del = async (id) => {
+    if (!confirm("Hapus rekening ini?")) return;
+    await supabase.from("banks").delete().eq("id", id);
+    data.reload();
+  };
+  return <div className="fade">
+    <div style={{fontSize:11,color:C.muted,marginBottom:8}}>Klik kartu untuk update saldo manual (sesuaikan dengan rekening koran).</div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:10}}>
+      {data.banks.map(b => <div key={b.id} onClick={()=>onEdit(b)} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:14,cursor:"pointer",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:0,right:0,width:60,height:60,background:b.color,opacity:.1,borderRadius:"50%",transform:"translate(20px,-20px)"}}/>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+          <div>
+            <div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:1}}>{b.type==="bank"?"Rekening Bank":b.type==="cash"?"Kas Tunai":"E-Wallet"}</div>
+            <div style={{fontSize:16,fontWeight:700,color:b.color,marginTop:2}}>{b.name}</div>
+            <div style={{fontSize:10,color:C.muted}}>{b.holder}</div>
+            {b.acc_no && b.acc_no!=="-" && <div style={{fontSize:10,color:C.muted,fontFamily:"monospace"}}>{b.acc_no}</div>}
+          </div>
+          <button onClick={e=>{e.stopPropagation();del(b.id);}} style={{background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:14,opacity:.5}}>×</button>
+        </div>
+        <div style={{paddingTop:10,marginTop:10,borderTop:`1px dashed ${C.border}`}}>
+          <div style={{fontSize:10,color:C.muted}}>Saldo</div>
+          <div style={{fontSize:22,fontWeight:700}}>Rp {fmt(b.balance)}</div>
+          {b.last_update && <div style={{fontSize:10,color:C.muted,marginTop:2}}>Update {timeAgo(b.last_update)}</div>}
+        </div>
+      </div>)}
+      <div onClick={onAdd} style={{background:C.card,border:`2px dashed ${C.border}`,borderRadius:12,padding:14,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",minHeight:140,color:C.muted}}>
+        <div style={{fontSize:30,marginBottom:6}}>+</div><div style={{fontSize:12}}>Tambah Rekening</div>
+      </div>
+    </div>
+  </div>;
+}
+
+function BankModal({ data, bank, onClose }) {
+  const [name, setName] = useState(bank?.name||"");
+  const [type, setType] = useState(bank?.type||"bank");
+  const [holder, setHolder] = useState(bank?.holder||"Koperasi The Power 55");
+  const [accNo, setAccNo] = useState(bank?.acc_no||"");
+  const [balance, setBalance] = useState(String(bank?.balance||0));
+  const [color, setColor] = useState(bank?.color||"#0D7377");
+  const [busy, setBusy] = useState(false);
+  const COLORS = ["#0D7377","#003D7A","#22C55E","#F59E0B","#a855f7","#ec4899","#0EA5E9","#EF4444"];
+
+  const save = async () => {
+    setBusy(true);
+    const payload = { name:name.trim(), type, holder:holder.trim(), acc_no:accNo.trim()||"-", balance:parseInt(balance)||0, color, last_update:new Date().toISOString() };
+    if (bank) await supabase.from("banks").update(payload).eq("id", bank.id);
+    else await supabase.from("banks").insert(payload);
+    await data.reload();
+    setBusy(false); onClose();
+  };
+
+  return <Modal title={bank?"Update Rekening":"Tambah Rekening"} onClose={onClose}>
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>Nama</label>
+        <input className="input" value={name} onChange={e=>setName(e.target.value)} placeholder="BRI, BCA, Kas Tunai…"/></div>
+      <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>Jenis</label>
+        <div style={{display:"flex",gap:6}}>
+          {[{id:"bank",l:"🏦 Bank"},{id:"cash",l:"💵 Tunai"},{id:"ewallet",l:"📱 E-Wallet"}].map(t=>
+            <button key={t.id} onClick={()=>setType(t.id)} className={`btn ${type===t.id?"btn-primary":"btn-secondary"}`} style={{flex:1,fontSize:11}}>{t.l}</button>)}
+        </div></div>
+      <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>Atas Nama</label>
+        <input className="input" value={holder} onChange={e=>setHolder(e.target.value)}/></div>
+      {type==="bank" && <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>No. Rekening</label>
+        <input className="input" value={accNo} onChange={e=>setAccNo(e.target.value)}/></div>}
+      <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>Saldo (Rp) — update manual</label>
+        <input className="input" value={balance} onChange={e=>setBalance(e.target.value.replace(/\D/g,""))}/>
+        {balance>0 && <div style={{fontSize:10,color:C.muted,marginTop:4}}>= Rp {fmt(parseInt(balance))}</div>}</div>
+      <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>Warna</label>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {COLORS.map(c=><div key={c} onClick={()=>setColor(c)} style={{width:28,height:28,borderRadius:6,background:c,cursor:"pointer",border:color===c?`3px solid ${C.text}`:`1px solid ${C.border}`}}/>)}
+        </div></div>
+      <div style={{display:"flex",gap:8,marginTop:6}}>
+        <button className="btn btn-secondary" style={{flex:1}} onClick={onClose}>Batal</button>
+        <button className="btn btn-primary" style={{flex:1}} disabled={busy||!name.trim()} onClick={save}>{busy?"Menyimpan…":"💾 Simpan"}</button>
+      </div>
+    </div>
+  </Modal>;
+}
+
+function TxModal({ data, onClose }) {
+  const [type, setType] = useState("in");
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [cat, setCat] = useState("");
+  const [amount, setAmount] = useState("");
+  const [bankId, setBankId] = useState(data.banks[0]?.id||"");
+  const [memberNo, setMemberNo] = useState("");
+  const [desc, setDesc] = useState("");
+  const [busy, setBusy] = useState(false);
+  const cats = type==="in" ? CAT_MASUK : CAT_KELUAR;
+  const n = parseInt(amount.replace(/\D/g,""))||0;
+
+  const save = async () => {
+    setBusy(true);
+    await supabase.from("transactions").insert({
+      date, type, category:cat, amount:n,
+      bank_id: bankId ? parseInt(bankId) : null,
+      member_no: memberNo ? parseInt(memberNo) : null,
+      description: desc.trim(),
+    });
+    await data.reload();
+    setBusy(false); onClose();
+  };
+
+  return <Modal title="Catat Transaksi" onClose={onClose}>
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",gap:6}}>
+        <button onClick={()=>{setType("in");setCat("");}} className="btn" style={{flex:1,background:type==="in"?C.green:"transparent",color:type==="in"?"#fff":C.text,border:`1px solid ${type==="in"?C.green:C.border}`}}>💚 Masuk</button>
+        <button onClick={()=>{setType("out");setCat("");}} className="btn" style={{flex:1,background:type==="out"?C.red:"transparent",color:type==="out"?"#fff":C.text,border:`1px solid ${type==="out"?C.red:C.border}`}}>❤️ Keluar</button>
+      </div>
+      <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>Tanggal</label>
+        <input className="input" type="date" value={date} onChange={e=>setDate(e.target.value)}/></div>
+      <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>Kategori</label>
+        <select className="input" value={cat} onChange={e=>setCat(e.target.value)}>
+          <option value="">-- Pilih --</option>
+          {cats.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}
+        </select></div>
+      <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>Nominal (Rp)</label>
+        <input className="input" value={amount} onChange={e=>setAmount(e.target.value.replace(/\D/g,""))}/>
+        {n>0 && <div style={{fontSize:10,color:C.muted,marginTop:4}}>= Rp {fmt(n)}</div>}</div>
+      <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>{type==="in"?"Masuk ke":"Keluar dari"} rekening</label>
+        <select className="input" value={bankId} onChange={e=>setBankId(e.target.value)}>
+          {data.banks.map(b=><option key={b.id} value={b.id}>{b.name} — Rp {fmt(b.balance)}</option>)}
+        </select></div>
+      <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>Anggota terkait (opsional)</label>
+        <select className="input" value={memberNo} onChange={e=>setMemberNo(e.target.value)}>
+          <option value="">-- Tidak ada --</option>
+          {data.members.filter(m=>!m.is_admin).map(m=><option key={m.no} value={m.no}>#{m.no} — {m.name}</option>)}
+        </select></div>
+      <div><label style={{fontSize:11,color:C.muted,display:"block",marginBottom:5}}>Keterangan</label>
+        <textarea className="input" rows={2} value={desc} onChange={e=>setDesc(e.target.value)} style={{resize:"vertical"}}/></div>
+      <div style={{fontSize:10,color:C.muted}}>Saldo rekening akan otomatis disesuaikan.</div>
+      <div style={{display:"flex",gap:8}}>
+        <button className="btn btn-secondary" style={{flex:1}} onClick={onClose}>Batal</button>
+        <button className="btn btn-primary" style={{flex:1}} disabled={busy||!cat||!n||!bankId} onClick={save}>{busy?"Menyimpan…":"💾 Catat"}</button>
+      </div>
+    </div>
+  </Modal>;
+}
+
+function TxView({ data }) {
+  const [fType, setFType] = useState("all");
+  const [fBank, setFBank] = useState("all");
+
+  const list = data.txs
+    .filter(t => fType==="all" || t.type===fType)
+    .filter(t => fBank==="all" || String(t.bank_id)===fBank);
+
+  const del = async (tx) => {
+    if (!confirm("Hapus transaksi ini? Saldo bank akan dikembalikan.")) return;
+    await supabase.from("transactions").delete().eq("id", tx.id);
+    data.reload();
+  };
+
+  return <div className="fade">
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+      <select className="input" style={{width:"auto",padding:"6px 10px",fontSize:11}} value={fType} onChange={e=>setFType(e.target.value)}>
+        <option value="all">Semua jenis</option><option value="in">💚 Masuk</option><option value="out">❤️ Keluar</option>
+      </select>
+      <select className="input" style={{width:"auto",padding:"6px 10px",fontSize:11}} value={fBank} onChange={e=>setFBank(e.target.value)}>
+        <option value="all">Semua rekening</option>
+        {data.banks.map(b=><option key={b.id} value={String(b.id)}>{b.name}</option>)}
+      </select>
+    </div>
+    {!list.length ? <div style={{textAlign:"center",padding:40,color:C.muted,fontSize:12}}>
+      <div style={{fontSize:38,marginBottom:8}}>📝</div>Belum ada transaksi.
+    </div> : <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden",overflowX:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+        <thead><tr style={{background:`${C.dark}80`}}>
+          {["Tanggal","Kategori","Keterangan","Rekening","Nominal",""].map(h=>
+            <th key={h} style={{textAlign:h==="Nominal"?"right":"left",padding:"10px 12px",color:C.muted,fontWeight:600,fontSize:11}}>{h}</th>)}
+        </tr></thead>
+        <tbody>{list.map(tx => {
+          const cat = ALL_CATS.find(c=>c.id===tx.category);
+          const bank = data.banks.find(b=>b.id===tx.bank_id);
+          const mem = tx.member_no ? data.members.find(m=>m.no===tx.member_no) : null;
+          return <tr key={tx.id} style={{borderTop:`1px solid ${C.border}40`}}>
+            <td style={{padding:"10px 12px",fontSize:11,whiteSpace:"nowrap"}}>{fmtDate(tx.date)}</td>
+            <td style={{padding:"10px 12px"}}><Badge text={cat?.label||tx.category} color={cat?.color||C.muted}/></td>
+            <td style={{padding:"10px 12px",color:C.muted,fontSize:11}}>
+              {tx.description||"-"}
+              {mem && <div style={{fontSize:10,color:C.accent,marginTop:2}}>👤 {mem.name}</div>}
+            </td>
+            <td style={{padding:"10px 12px",fontSize:11}}>{bank?.name||"-"}</td>
+            <td style={{padding:"10px 12px",textAlign:"right",fontWeight:700,color:tx.type==="in"?C.green:C.red,whiteSpace:"nowrap"}}>
+              {tx.type==="in"?"+":"−"} Rp {fmt(tx.amount)}
+            </td>
+            <td style={{padding:"10px 12px"}}><button onClick={()=>del(tx)} style={{background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:14,opacity:.5}}>×</button></td>
+          </tr>;
+        })}</tbody>
+      </table>
+    </div>}
+  </div>;
+}
+
+function SummaryView({ txs }) {
+  const inBy = {}, outBy = {};
+  txs.forEach(t => { const tgt = t.type==="in"?inBy:outBy; tgt[t.category] = (tgt[t.category]||0)+t.amount; });
+  const totalIn = Object.values(inBy).reduce((s,v)=>s+v,0);
+  const totalOut = Object.values(outBy).reduce((s,v)=>s+v,0);
+
+  const Bar = ({ cat, value, total, color }) => <div style={{marginBottom:10}}>
+    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,fontSize:12}}>
+      <Badge text={cat.label} color={cat.color}/>
+      <strong style={{color}}>Rp {fmt(value)}</strong>
+    </div>
+    <div style={{height:6,background:C.border,borderRadius:99,overflow:"hidden"}}>
+      <div style={{height:"100%",width:`${total?value/total*100:0}%`,background:cat.color,borderRadius:99}}/>
+    </div>
+  </div>;
+
+  return <div className="fade">
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:12}}>
+      <div style={{background:C.card,border:`1px solid ${C.green}30`,borderRadius:12,padding:16}}>
+        <div style={{fontSize:13,fontWeight:700,color:C.green,marginBottom:12}}>💚 Pemasukan</div>
+        {!Object.keys(inBy).length ? <div style={{fontSize:11,color:C.muted,textAlign:"center",padding:14}}>Belum ada data.</div>
+          : <>{CAT_MASUK.filter(c=>inBy[c.id]>0).sort((a,b)=>inBy[b.id]-inBy[a.id]).map(c=><Bar key={c.id} cat={c} value={inBy[c.id]} total={totalIn} color={C.green}/>)}
+            <div style={{marginTop:12,paddingTop:10,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",fontSize:13}}>
+              <strong>TOTAL</strong><strong style={{color:C.green}}>Rp {fmt(totalIn)}</strong></div></>}
+      </div>
+      <div style={{background:C.card,border:`1px solid ${C.red}30`,borderRadius:12,padding:16}}>
+        <div style={{fontSize:13,fontWeight:700,color:C.red,marginBottom:12}}>❤️ Pengeluaran</div>
+        {!Object.keys(outBy).length ? <div style={{fontSize:11,color:C.muted,textAlign:"center",padding:14}}>Belum ada data.</div>
+          : <>{CAT_KELUAR.filter(c=>outBy[c.id]>0).sort((a,b)=>outBy[b.id]-outBy[a.id]).map(c=><Bar key={c.id} cat={c} value={outBy[c.id]} total={totalOut} color={C.red}/>)}
+            <div style={{marginTop:12,paddingTop:10,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",fontSize:13}}>
+              <strong>TOTAL</strong><strong style={{color:C.red}}>Rp {fmt(totalOut)}</strong></div></>}
+      </div>
+    </div>
+    <div style={{background:`linear-gradient(135deg,${C.card} 0%,#0d2c3a 100%)`,border:`1px solid ${C.mint}30`,borderRadius:12,padding:16,marginTop:14,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+      <div><div style={{fontSize:13,fontWeight:700}}>📊 NET</div><div style={{fontSize:11,color:C.muted}}>Masuk − Keluar</div></div>
+      <div style={{fontSize:24,fontWeight:700,color:totalIn-totalOut>=0?C.mint:C.amber}}>Rp {fmt(totalIn-totalOut)}</div>
+    </div>
+  </div>;
+}
