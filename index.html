@@ -1248,7 +1248,7 @@ function MemberPortal({
       fontSize: 13,
       fontWeight: 600
     }
-  }, "EKUITAS BERSIH"), /*#__PURE__*/React.createElement("strong", {
+  }, "HAK ANDA DI KOPERASI"), /*#__PURE__*/React.createElement("strong", {
     style: {
       fontSize: 22,
       fontWeight: 700,
@@ -1292,6 +1292,10 @@ function MemberApp({
     label: "Pengajuan",
     icon: "📋",
     count: myPending
+  }, {
+    id: "syariah",
+    label: "Pedoman",
+    icon: "☪️"
   }];
   return /*#__PURE__*/React.createElement("div", {
     className: "fade"
@@ -1407,7 +1411,7 @@ function MemberApp({
   }), tab === "my" && /*#__PURE__*/React.createElement(MyApps, {
     apps: myApps,
     data: data
-  })));
+  }), tab === "syariah" && /*#__PURE__*/React.createElement(PedomanSyariah, null)));
 }
 function ApplyForm({
   member,
@@ -2087,6 +2091,10 @@ function AdminApp({
     id: "history",
     label: "Riwayat",
     icon: "📋"
+  }, {
+    id: "syariah",
+    label: "Pedoman",
+    icon: "☪️"
   }];
   return /*#__PURE__*/React.createElement("div", {
     className: "fade"
@@ -2160,7 +2168,7 @@ function AdminApp({
   }), tab === "history" && /*#__PURE__*/React.createElement(History, {
     apps: decided,
     data: data
-  })));
+  }), tab === "syariah" && /*#__PURE__*/React.createElement(PedomanSyariah, null)));
 }
 function AdminDash({
   data,
@@ -4087,6 +4095,183 @@ function SummaryView({
       color: totalIn - totalOut >= 0 ? C.mint : C.amber
     }
   }, "Rp ", fmt(totalIn - totalOut))));
+}
+function PedomanSyariah() {
+  const [open, setOpen] = useState("akad");
+  const Section = ({
+    id,
+    icon,
+    title,
+    children
+  }) => /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 12,
+      marginBottom: 10,
+      overflow: "hidden"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: () => setOpen(open === id ? null : id),
+    style: {
+      padding: "14px 16px",
+      cursor: "pointer",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 18
+    }
+  }, icon), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13,
+      fontWeight: 700
+    }
+  }, title)), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.muted,
+      fontSize: 16
+    }
+  }, open === id ? "−" : "+")), open === id && /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "0 16px 16px",
+      fontSize: 12,
+      color: C.muted,
+      lineHeight: 1.9
+    }
+  }, children));
+  const B = ({
+    children
+  }) => /*#__PURE__*/React.createElement("strong", {
+    style: {
+      color: C.text
+    }
+  }, children);
+  const Box = ({
+    color,
+    title,
+    children
+  }) => /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: `${color}10`,
+      borderLeft: `3px solid ${color}`,
+      borderRadius: 8,
+      padding: "10px 12px",
+      marginTop: 10,
+      marginBottom: 10
+    }
+  }, title && /*#__PURE__*/React.createElement("div", {
+    style: {
+      color,
+      fontWeight: 700,
+      fontSize: 12,
+      marginBottom: 4
+    }
+  }, title), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11.5,
+      lineHeight: 1.85
+    }
+  }, children));
+  return /*#__PURE__*/React.createElement("div", {
+    className: "fade"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: `linear-gradient(135deg,${C.teal}25 0%,${C.card} 100%)`,
+      border: `1px solid ${C.teal}40`,
+      borderRadius: 14,
+      padding: 18,
+      marginBottom: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 26,
+      marginBottom: 6
+    }
+  }, "☪️"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 17,
+      fontWeight: 700,
+      color: "#f8fafc"
+    }
+  }, "Pedoman Syariah Koperasi"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11.5,
+      color: C.muted,
+      marginTop: 6,
+      lineHeight: 1.8
+    }
+  }, "Halaman ini menjelaskan akad-akad yang dipakai Koperasi The Power 55, dasar perhitungannya, serta hal-hal yang masih dalam proses penyesuaian. Terbuka untuk seluruh anggota.")), /*#__PURE__*/React.createElement(Section, {
+    id: "akad",
+    icon: "📜",
+    title: "Akad yang Dipakai Koperasi"
+  }, /*#__PURE__*/React.createElement(B, null, "1. Simpanan Pokok — akad Musyarakah (penyertaan modal)"), /*#__PURE__*/React.createElement("br", null), "Rp 1.000.000 disetor sekali saat menjadi anggota. Ini bukan titipan, melainkan modal penyertaan. Karena itu anggota berhak atas SHU, dan juga ikut menanggung risiko bila koperasi merugi.", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement(B, null, "2. Tabungan Wajib — akad Wadi'ah yad dhamanah (titipan)"), /*#__PURE__*/React.createElement("br", null), "Rp 10.000/bulan, boleh dirapel Rp 120.000/tahun. Dana dititipkan dan boleh dikelola koperasi, tetapi wajib dapat dikembalikan penuh kapan pun diminta. Bonus atas titipan (bila ada) bersifat sukarela dari koperasi, bukan janji atau kewajiban di muka.", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement(B, null, "3. Jasa Sertifikat / Dokumen — akad Ijarah (sewa jasa)"), /*#__PURE__*/React.createElement("br", null), "Koperasi membayar langsung ke penyedia jasa (BP3IP, PIP, imigrasi, dsb). Anggota membayar kembali harga jasa ditambah ", /*#__PURE__*/React.createElement(B, null, "ujrah"), " (upah pengurusan) yang disepakati sebagai ", /*#__PURE__*/React.createElement(B, null, "nominal tetap"), ", bukan persentase berjalan.", /*#__PURE__*/React.createElement(Box, {
+    color: C.green,
+    title: "✓ Sudah sesuai syariah"
+  }, "Ada objek riil (jasa yang diurus), harga total diketahui dan disepakati sejak awal, dan tidak berubah meski pembayaran terlambat."), /*#__PURE__*/React.createElement(B, null, "4. Pinjaman Tunai — akad Qardh (pinjaman kebajikan)"), /*#__PURE__*/React.createElement("br", null), "Uang tunai ke anggota. Dalam fikih, uang yang dipinjamkan wajib dikembalikan", /*#__PURE__*/React.createElement(B, null, " sejumlah yang sama"), ", tanpa tambahan apa pun.", /*#__PURE__*/React.createElement(Box, {
+    color: C.amber,
+    title: "⚠️ Bagian yang masih disesuaikan"
+  }, "Sistem lama memotong 10% di muka dari pinjaman tunai. Potongan semacam ini tidak bisa disebut Ijarah, karena Ijarah mensyaratkan adanya ", /*#__PURE__*/React.createElement(B, null, "objek sewa atau jasa yang nyata"), " — sedangkan pada pinjaman tunai yang dipertukarkan adalah uang dengan uang.", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("br", null), "Yang dibolehkan pada Qardh hanyalah ", /*#__PURE__*/React.createElement(B, null, "biaya administrasi riil"), " — biaya yang benar-benar dikeluarkan koperasi (materai, transfer, fotokopi), dinyatakan dalam rupiah tetap, dan ", /*#__PURE__*/React.createElement(B, null, "tidak dihitung sebagai persentase dari pokok pinjaman"), ".")), /*#__PURE__*/React.createElement(Section, {
+    id: "rumus",
+    icon: "🧮",
+    title: "Rumus & Contoh Perhitungan"
+  }, /*#__PURE__*/React.createElement(B, null, "A. Jasa Sertifikat (Ijarah)"), /*#__PURE__*/React.createElement(Box, {
+    color: C.teal
+  }, "Harga jasa dari penyedia\xA0\xA0= Rp 3.000.000", /*#__PURE__*/React.createElement("br", null), "Ujrah pengurusan koperasi\xA0= Rp 300.000", /*#__PURE__*/React.createElement("br", null), "─────────────────────────", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement(B, null, "Total kewajiban anggota\xA0= Rp 3.300.000"), /*#__PURE__*/React.createElement("br", null), "Tenor 6 bulan → Rp 550.000/bulan"), "Koperasi mentransfer Rp 3.000.000 langsung ke penyedia. Anggota menerima sertifikatnya, bukan uangnya. Angka Rp 3.300.000 mengikat sejak akad — tidak bertambah walau anggota terlambat membayar.", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement(B, null, "B. Pinjaman Tunai (Qardh)"), /*#__PURE__*/React.createElement(Box, {
+    color: C.mint
+  }, "Pinjaman\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0= Rp 3.000.000", /*#__PURE__*/React.createElement("br", null), "Biaya administrasi\xA0= Rp 25.000 (nominal riil, sekali)", /*#__PURE__*/React.createElement("br", null), "─────────────────────────", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement(B, null, "Dikembalikan\xA0\xA0\xA0\xA0\xA0\xA0= Rp 3.000.000")), "Tidak ada margin. Koperasi tetap bisa hidup dari ", /*#__PURE__*/React.createElement(B, null, "ujrah jasa sertifikat"), ", yang justru paling sering dibutuhkan anggota pelaut.", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement(B, null, "C. SHU (Sisa Hasil Usaha)"), /*#__PURE__*/React.createElement(Box, {
+    color: C.amber
+  }, "SHU tahun buku = Total pendapatan halal − biaya operasional", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("br", null), "Dibagi menurut porsi yang ditetapkan Rapat Anggota, umumnya:", /*#__PURE__*/React.createElement("br", null), "• Cadangan koperasi\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0— sebagian ditahan", /*#__PURE__*/React.createElement("br", null), "• Jasa modal (Simpanan Pokok)\xA0— proporsional simpanan", /*#__PURE__*/React.createElement("br", null), "• Jasa transaksi\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0— proporsional keaktifan", /*#__PURE__*/React.createElement("br", null), "• Dana sosial & pendidikan\xA0\xA0\xA0\xA0\xA0\xA0— sesuai kesepakatan"), "Persentase pastinya ditetapkan dalam RAT, bukan oleh pengurus sendiri.", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement(B, null, "D. Ekuitas Bersih Anggota"), /*#__PURE__*/React.createElement(Box, {
+    color: C.mint
+  }, "(Simpanan Pokok + Tabungan Wajib + SHU)", /*#__PURE__*/React.createElement("br", null), "\xA0\xA0− (Sisa pinjaman + Tunggakan tabungan)", /*#__PURE__*/React.createElement("br", null), "─────────────────────────", /*#__PURE__*/React.createElement("br", null), "= ", /*#__PURE__*/React.createElement(B, null, "Hak bersih anggota di koperasi")), "Inilah perkiraan jumlah yang menjadi hak anggota apabila keluar dari keanggotaan."), /*#__PURE__*/React.createElement(Section, {
+    id: "larangan",
+    icon: "🚫",
+    title: "Tiga Hal yang Dihindari"
+  }, /*#__PURE__*/React.createElement(B, null, "1. Riba"), " — tambahan atas pinjaman uang, apa pun namanya: bunga, admin persentase, atau denda keterlambatan yang menambah pokok. Yang menjadikannya riba bukan besar-kecilnya, melainkan karena uang ditukar uang dengan tambahan.", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement(B, null, "2. Gharar"), " — ketidakjelasan. Harga, tenor, dan besar angsuran wajib pasti dan tertulis sejak akad. Tidak boleh berubah di tengah jalan secara sepihak.", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement(B, null, "3. Maysir"), " — untung-untungan. Koperasi tidak boleh mengambil keuntungan dari hal yang belum jelas wujudnya atau bersifat spekulatif.", /*#__PURE__*/React.createElement(Box, {
+    color: C.accent,
+    title: "Tentang keterlambatan"
+  }, "Anggota yang terlambat membayar ", /*#__PURE__*/React.createElement(B, null, "tidak dikenai tambahan biaya"), ". Yang berlaku adalah konsekuensi non-finansial: level keanggotaan tidak naik, dan plafon berikutnya tidak bertambah.")), /*#__PURE__*/React.createElement(Section, {
+    id: "level",
+    icon: "🏆",
+    title: "Dasar Sistem Level Anggota"
+  }, "Level bukan penilaian pribadi, melainkan catatan rekam jejak pembayaran. Tujuannya dua: melindungi dana bersama dari risiko, sekaligus menghargai anggota yang amanah.", /*#__PURE__*/React.createElement(Box, {
+    color: C.teal
+  }, "🥉 ", /*#__PURE__*/React.createElement(B, null, "Bronze"), "\xA0\xA0\xA0\xA0\xA0\xA0Rp 1–2 jt\xA0\xA0\xA0— anggota baru", /*#__PURE__*/React.createElement("br", null), "🥈 ", /*#__PURE__*/React.createElement(B, null, "Silver"), "\xA0\xA0\xA0\xA0\xA0\xA0Rp 2–3 jt\xA0\xA0\xA0— 1× lunas tepat waktu", /*#__PURE__*/React.createElement("br", null), "🥇 ", /*#__PURE__*/React.createElement(B, null, "Gold"), "\xA0\xA0\xA0\xA0\xA0\xA0\xA0\xA0Rp 3–4 jt\xA0\xA0\xA0— 2× lunas tepat waktu", /*#__PURE__*/React.createElement("br", null), "⭐ ", /*#__PURE__*/React.createElement(B, null, "Gold Star"), "\xA0\xA0Rp 4–6 jt\xA0\xA0\xA0— 3× lunas atau lebih"), "Pembatasan plafon termasuk bentuk ", /*#__PURE__*/React.createElement(B, null, "kehati-hatian dalam mengelola amanah"), "(hifzhul-mal) — menjaga harta bersama agar tidak habis pada satu pihak."), /*#__PURE__*/React.createElement(Section, {
+    id: "rujukan",
+    icon: "📚",
+    title: "Rujukan & Catatan Penting"
+  }, "Akad-akad di atas mengacu pada fatwa Dewan Syariah Nasional MUI, di antaranya tentang ", /*#__PURE__*/React.createElement(B, null, "Murabahah"), ", ", /*#__PURE__*/React.createElement(B, null, "Ijarah"), ", ", /*#__PURE__*/React.createElement(B, null, "Qardh"), ", dan ", /*#__PURE__*/React.createElement(B, null, "Tabungan"), ". Koperasi simpan pinjam dan pembiayaan syariah (KSPPS) juga terikat peraturan Kementerian Koperasi dan UKM.", /*#__PURE__*/React.createElement(Box, {
+    color: C.amber,
+    title: "⚠️ Harap dibaca"
+  }, "Halaman ini disusun sebagai bahan pemahaman bersama, ", /*#__PURE__*/React.createElement(B, null, "bukan fatwa"), ". Sebelum diberlakukan sebagai aturan resmi, sebaiknya:", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("br", null), "1. Dibahas dan disahkan dalam ", /*#__PURE__*/React.createElement(B, null, "Rapat Anggota"), /*#__PURE__*/React.createElement("br", null), "2. Dikonsultasikan kepada ", /*#__PURE__*/React.createElement(B, null, "Dewan Pengawas Syariah"), " atau ustadz yang memahami fikih muamalah", /*#__PURE__*/React.createElement("br", null), "3. Diperiksa kesesuaiannya dengan regulasi terbaru di ", /*#__PURE__*/React.createElement(B, null, "Dinas Koperasi"), " setempat", /*#__PURE__*/React.createElement("br", null), "4. Dituangkan dalam ", /*#__PURE__*/React.createElement(B, null, "AD/ART"), " tertulis"), "Perbedaan pendapat di antara ulama dalam sebagian rincian adalah hal yang lumrah. Yang menjadi pegangan koperasi adalah keputusan Rapat Anggota setelah mendengar masukan pihak yang berkompeten."), /*#__PURE__*/React.createElement(Section, {
+    id: "transisi",
+    icon: "🔄",
+    title: "Status Transisi Saat Ini"
+  }, /*#__PURE__*/React.createElement(B, null, "Sudah berjalan sesuai syariah:"), /*#__PURE__*/React.createElement(Box, {
+    color: C.green
+  }, "✓ Jasa sertifikat dengan akad Ijarah — koperasi membayar penyedia secara langsung", /*#__PURE__*/React.createElement("br", null), "✓ Ujrah berupa nominal tetap, disepakati di awal", /*#__PURE__*/React.createElement("br", null), "✓ Tidak ada denda yang menambah pokok", /*#__PURE__*/React.createElement("br", null), "✓ Musyawarah 24 jam sebelum pembiayaan disetujui"), /*#__PURE__*/React.createElement(B, null, "Masih dalam proses:"), /*#__PURE__*/React.createElement(Box, {
+    color: C.amber
+  }, "○ Pinjaman tunai masih mengikuti pola potongan 10% dari sistem lama", /*#__PURE__*/React.createElement("br", null), "○ Belum ada Dewan Pengawas Syariah", /*#__PURE__*/React.createElement("br", null), "○ AD/ART berbasis syariah belum tertulis lengkap", /*#__PURE__*/React.createElement("br", null), "○ Pinjaman lama masih diselesaikan dengan skema awalnya"), /*#__PURE__*/React.createElement(B, null, "Usulan langkah berikutnya:"), /*#__PURE__*/React.createElement(Box, {
+    color: C.accent
+  }, "1. Pinjaman tunai baru dijalankan sebagai ", /*#__PURE__*/React.createElement(B, null, "Qardh"), " — tanpa tambahan, hanya biaya administrasi riil", /*#__PURE__*/React.createElement("br", null), "2. Kebutuhan barang diarahkan ke akad ", /*#__PURE__*/React.createElement(B, null, "Murabahah"), " (koperasi membeli, lalu menjual dengan margin yang disepakati)", /*#__PURE__*/React.createElement("br", null), "3. Pendapatan koperasi difokuskan pada ", /*#__PURE__*/React.createElement(B, null, "ujrah jasa sertifikat"), " — halal dan paling sering dibutuhkan anggota pelaut", /*#__PURE__*/React.createElement("br", null), "4. Pinjaman lama diselesaikan apa adanya; perubahan diberlakukan untuk akad baru")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "center",
+      fontSize: 10.5,
+      color: C.muted,
+      marginTop: 16,
+      marginBottom: 8,
+      lineHeight: 1.8
+    }
+  }, "Ada masukan atau koreksi atas pedoman ini?", /*#__PURE__*/React.createElement("br", null), "Sampaikan kepada pengurus untuk dibahas di Rapat Anggota."));
 }
 ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(App, null));
 </script>
