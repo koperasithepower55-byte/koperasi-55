@@ -471,6 +471,7 @@ function App() {
   }));
   return /*#__PURE__*/React.createElement(Shell, null, !session && /*#__PURE__*/React.createElement(LoginScreen, {
     members: members,
+    loans: loans,
     onLogin: setSession,
     onRegister: () => setView("register")
   }), session?.isAdmin && /*#__PURE__*/React.createElement(AdminApp, {
@@ -537,6 +538,7 @@ function Shell({
 // ═══════════════════════════════════════════════════════════
 function LoginScreen({
   members,
+  loans,
   onLogin,
   onRegister
 }) {
@@ -544,6 +546,11 @@ function LoginScreen({
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [slide, setSlide] = useState(0);
+  const [showLogin, setShowLogin] = useState(false);
+
+  // ── GANTI URL LOGO DI BARIS BAWAH INI (kosongkan "" untuk pakai ikon ⚓) ──
+  const LOGO_URL = "https://raw.githubusercontent.com/koperasithepower55-byte/koperasi-55/refs/heads/main/logo.png";
   const handleLogin = async () => {
     setBusy(true);
     setError("");
@@ -565,59 +572,372 @@ function LoginScreen({
       isAdmin: data[0].is_admin
     });
   };
-  return /*#__PURE__*/React.createElement("div", {
-    className: "fade",
-    style: {
-      minHeight: "100vh",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: 20
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      width: "100%",
-      maxWidth: 360
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      textAlign: "center",
-      marginBottom: 24
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 42,
-      marginBottom: 6
-    }
-  }, "⚓"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: C.muted,
-      letterSpacing: 2,
-      textTransform: "uppercase"
-    }
-  }, "Koperasi Simpan Pinjam"), /*#__PURE__*/React.createElement("h1", {
-    style: {
-      fontSize: 22,
-      fontWeight: 700,
-      margin: "4px 0",
-      color: "#f8fafc"
-    }
-  }, "The Power 55")), /*#__PURE__*/React.createElement("div", {
+
+  // ── Statistik otomatis dari database ──
+  const anggotaAktif = (members || []).filter(m => !m.is_admin && m.status === "aktif").length;
+  const totalTersalur = (loans || []).reduce((s, l) => s + (l.amount || 0), 0);
+  const totalLunas = (loans || []).filter(l => l.status === "lunas").length;
+
+  // ── Slide keunggulan ──
+  const SLIDES = [{
+    icon: "🚫",
+    title: "Bebas Riba",
+    desc: "Pinjaman tunai dengan akad Qardh — dikembalikan sejumlah yang dipinjam, tanpa bunga atau tambahan.",
+    color: C.green
+  }, {
+    icon: "🤝",
+    title: "Dari Pelaut untuk Pelaut",
+    desc: "Dibangun sesama alumni pelaut sejak 2019. Saling menolong, bukan mencari untung dari sesama.",
+    color: C.teal
+  }, {
+    icon: "📜",
+    title: "Bantu Urus Sertifikat",
+    desc: "Koperasi membayar langsung penyedia jasa (STCW, COC, Buku Pelaut, Passport). Anggota tinggal terima.",
+    color: C.purple
+  }, {
+    icon: "💰",
+    title: "Bagi Hasil SHU",
+    desc: "Sebagai pemilik koperasi, setiap anggota berhak atas Sisa Hasil Usaha yang dibagikan tiap tahun.",
+    color: C.amber
+  }];
+  useEffect(() => {
+    const t = setInterval(() => setSlide(s => (s + 1) % SLIDES.length), 4000);
+    return () => clearInterval(t);
+  }, []);
+  const Card = ({
+    children,
+    style
+  }) => React.createElement("div", {
     style: {
       background: C.card,
       border: `1px solid ${C.border}`,
-      borderRadius: 12,
+      borderRadius: 14,
+      ...style
+    }
+  }, children);
+  return React.createElement("div", {
+    className: "fade",
+    style: {
+      maxWidth: 440,
+      margin: "0 auto",
+      padding: "24px 20px 40px"
+    }
+  },
+  // ═══ 1. HERO ═══
+  React.createElement("div", {
+    style: {
+      textAlign: "center",
+      marginBottom: 22
+    }
+  }, LOGO_URL ? React.createElement("img", {
+    src: LOGO_URL,
+    alt: "Logo",
+    style: {
+      width: 76,
+      height: 76,
+      objectFit: "contain",
+      marginBottom: 8
+    }
+  }) : React.createElement("div", {
+    style: {
+      fontSize: 46,
+      marginBottom: 6
+    }
+  }, "⚓"), React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: C.mint,
+      letterSpacing: 2,
+      textTransform: "uppercase",
+      fontWeight: 600
+    }
+  }, "Koperasi Syariah"), React.createElement("h1", {
+    style: {
+      fontSize: 26,
+      fontWeight: 800,
+      margin: "4px 0",
+      color: "#f8fafc"
+    }
+  }, "The Power 55"), React.createElement("p", {
+    style: {
+      fontSize: 13,
+      color: C.muted,
+      lineHeight: 1.7,
+      marginTop: 8,
+      maxWidth: 340,
+      marginLeft: "auto",
+      marginRight: "auto"
+    }
+  }, "Simpan pinjam sesama pelaut — ", React.createElement("span", {
+    style: {
+      color: C.text,
+      fontWeight: 600
+    }
+  }, "tanpa riba"), ", saling menolong, dan berbagi hasil.")),
+  // ═══ 5. BUKTI SOSIAL (statistik otomatis) ═══
+  React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr 1fr",
+      gap: 8,
+      marginBottom: 20
+    }
+  }, React.createElement(Card, {
+    style: {
+      padding: "12px 8px",
+      textAlign: "center"
+    }
+  }, React.createElement("div", {
+    style: {
+      fontSize: 22,
+      fontWeight: 800,
+      color: C.mint
+    }
+  }, anggotaAktif), React.createElement("div", {
+    style: {
+      fontSize: 9.5,
+      color: C.muted,
+      marginTop: 2
+    }
+  }, "Anggota Aktif")), React.createElement(Card, {
+    style: {
+      padding: "12px 8px",
+      textAlign: "center"
+    }
+  }, React.createElement("div", {
+    style: {
+      fontSize: 22,
+      fontWeight: 800,
+      color: C.teal
+    }
+  }, "2019"), React.createElement("div", {
+    style: {
+      fontSize: 9.5,
+      color: C.muted,
+      marginTop: 2
+    }
+  }, "Berdiri Sejak")), React.createElement(Card, {
+    style: {
+      padding: "12px 8px",
+      textAlign: "center"
+    }
+  }, React.createElement("div", {
+    style: {
+      fontSize: 22,
+      fontWeight: 800,
+      color: C.amber
+    }
+  }, "Rp " + fmtJt(totalTersalur)), React.createElement("div", {
+    style: {
+      fontSize: 9.5,
+      color: C.muted,
+      marginTop: 2
+    }
+  }, "Tersalurkan"))),
+  // ═══ 2. SLIDE KEUNGGULAN ═══
+  React.createElement("div", {
+    style: {
+      marginBottom: 20
+    }
+  }, React.createElement(Card, {
+    style: {
+      padding: 20,
+      borderColor: `${SLIDES[slide].color}40`,
+      minHeight: 150,
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "center",
+      transition: ".3s"
+    }
+  }, React.createElement("div", {
+    style: {
+      fontSize: 38,
+      marginBottom: 10,
+      textAlign: "center"
+    }
+  }, SLIDES[slide].icon), React.createElement("div", {
+    style: {
+      fontSize: 17,
+      fontWeight: 700,
+      textAlign: "center",
+      color: SLIDES[slide].color,
+      marginBottom: 6
+    }
+  }, SLIDES[slide].title), React.createElement("div", {
+    style: {
+      fontSize: 12.5,
+      color: C.muted,
+      textAlign: "center",
+      lineHeight: 1.7
+    }
+  }, SLIDES[slide].desc)), React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "center",
+      gap: 6,
+      marginTop: 12
+    }
+  }, ...SLIDES.map((s, i) => React.createElement("div", {
+    key: i,
+    onClick: () => setSlide(i),
+    style: {
+      width: i === slide ? 22 : 8,
+      height: 8,
+      borderRadius: 99,
+      background: i === slide ? SLIDES[i].color : C.border,
+      cursor: "pointer",
+      transition: ".3s"
+    }
+  })))),
+  // ═══ 3. CARA KERJA 3 LANGKAH ═══
+  React.createElement("div", {
+    style: {
+      marginBottom: 20
+    }
+  }, React.createElement("div", {
+    style: {
+      fontSize: 13,
+      fontWeight: 700,
+      marginBottom: 12,
+      textAlign: "center",
+      color: C.text
+    }
+  }, "Cara Bergabung"), React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 8
+    }
+  }, ...[{
+    n: "1",
+    t: "Daftar",
+    d: "Isi data diri lewat tombol Daftar di bawah"
+  }, {
+    n: "2",
+    t: "Setor Simpanan Pokok",
+    d: "Rp 1.000.000 sekali sebagai modal penyertaan (Musyarakah)"
+  }, {
+    n: "3",
+    t: "Nikmati Layanan",
+    d: "Ajukan pembiayaan, urus sertifikat, terima SHU tiap tahun"
+  }].map(step => React.createElement(Card, {
+    key: step.n,
+    style: {
+      padding: "12px 14px",
+      display: "flex",
+      alignItems: "center",
+      gap: 12
+    }
+  }, React.createElement("div", {
+    style: {
+      width: 30,
+      height: 30,
+      borderRadius: "50%",
+      background: `${C.teal}20`,
+      color: C.mint,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontWeight: 700,
+      fontSize: 14,
+      flexShrink: 0
+    }
+  }, step.n), React.createElement("div", null, React.createElement("div", {
+    style: {
+      fontSize: 13,
+      fontWeight: 600
+    }
+  }, step.t), React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: C.muted,
+      marginTop: 1
+    }
+  }, step.d)))))),
+  // ═══ 4. RINGKASAN AKAD SYARIAH ═══
+  React.createElement(Card, {
+    style: {
+      padding: 16,
+      marginBottom: 22,
+      background: `linear-gradient(135deg, ${C.teal}12 0%, ${C.card} 100%)`,
+      borderColor: `${C.teal}30`
+    }
+  }, React.createElement("div", {
+    style: {
+      fontSize: 13,
+      fontWeight: 700,
+      marginBottom: 10,
+      display: "flex",
+      alignItems: "center",
+      gap: 6
+    }
+  }, "☪️ Akad yang Kami Pakai"), React.createElement("div", {
+    style: {
+      fontSize: 11.5,
+      color: C.muted,
+      lineHeight: 2
+    }
+  }, React.createElement("div", null, "• ", React.createElement("strong", {
+    style: {
+      color: C.text
+    }
+  }, "Simpanan Pokok"), " — Musyarakah (penyertaan modal)"), React.createElement("div", null, "• ", React.createElement("strong", {
+    style: {
+      color: C.text
+    }
+  }, "Jasa Sertifikat"), " — Ijarah (upah pengurusan)"), React.createElement("div", null, "• ", React.createElement("strong", {
+    style: {
+      color: C.text
+    }
+  }, "Pinjaman Tunai"), " — Qardh (tanpa tambahan)"), React.createElement("div", {
+    style: {
+      marginTop: 6,
+      paddingTop: 6,
+      borderTop: `1px dashed ${C.border}`,
+      fontStyle: "italic"
+    }
+  }, "Penjelasan lengkap tersedia di dalam aplikasi setelah masuk."))),
+  // ═══ CTA: MASUK / DAFTAR ═══
+  !showLogin && React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 10
+    }
+  }, React.createElement("button", {
+    className: "btn btn-primary",
+    style: {
+      padding: 14,
+      fontSize: 15
+    },
+    onClick: () => setShowLogin(true)
+  }, "🔑 Masuk (Anggota)"), React.createElement("button", {
+    className: "btn btn-secondary",
+    style: {
+      padding: 14,
+      fontSize: 15
+    },
+    onClick: onRegister
+  }, "📝 Daftar Anggota Baru")),
+  // ═══ FORM LOGIN (muncul saat tombol Masuk ditekan) ═══
+  showLogin && React.createElement(Card, {
+    style: {
       padding: 20
     }
-  }, /*#__PURE__*/React.createElement("label", {
+  }, React.createElement("div", {
+    style: {
+      fontSize: 14,
+      fontWeight: 700,
+      marginBottom: 14
+    }
+  }, "Masuk ke Akun Anda"), React.createElement("label", {
     style: {
       fontSize: 11,
       color: C.muted,
       display: "block",
       marginBottom: 5
     }
-  }, "Nomor Anggota"), /*#__PURE__*/React.createElement("input", {
+  }, "Nomor Anggota"), React.createElement("input", {
     className: "input",
     type: "number",
     value: no,
@@ -629,14 +949,14 @@ function LoginScreen({
     style: {
       marginBottom: 12
     }
-  }), /*#__PURE__*/React.createElement("label", {
+  }), React.createElement("label", {
     style: {
       fontSize: 11,
       color: C.muted,
       display: "block",
       marginBottom: 5
     }
-  }, "PIN"), /*#__PURE__*/React.createElement("input", {
+  }, "PIN"), React.createElement("input", {
     className: "input",
     type: "password",
     value: pin,
@@ -646,13 +966,13 @@ function LoginScreen({
     },
     placeholder: "4 digit",
     onKeyDown: e => e.key === "Enter" && handleLogin()
-  }), error && /*#__PURE__*/React.createElement("div", {
+  }), error && React.createElement("div", {
     style: {
       fontSize: 11,
       color: C.red,
       marginTop: 8
     }
-  }, error), /*#__PURE__*/React.createElement("button", {
+  }, error), React.createElement("button", {
     className: "btn btn-primary",
     style: {
       width: "100%",
@@ -661,40 +981,34 @@ function LoginScreen({
     },
     disabled: !no || !pin || busy,
     onClick: handleLogin
-  }, busy ? "Memeriksa…" : "Masuk"), /*#__PURE__*/React.createElement("div", {
+  }, busy ? "Memeriksa…" : "Masuk"), React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      marginTop: 14,
+      fontSize: 11
+    }
+  }, React.createElement("span", {
+    style: {
+      color: C.muted,
+      cursor: "pointer"
+    },
+    onClick: () => setShowLogin(false)
+  }, "← Kembali"), React.createElement("span", {
+    style: {
+      color: C.mint,
+      cursor: "pointer"
+    },
+    onClick: onRegister
+  }, "Belum anggota? Daftar")), React.createElement("div", {
     style: {
       fontSize: 10,
       color: C.muted,
       marginTop: 12,
-      textAlign: "center",
-      lineHeight: 1.6
-    }
-  }, "Lupa PIN? Hubungi pengurus koperasi."), /*#__PURE__*/React.createElement("div", {
-    style: {
-      marginTop: 14,
-      paddingTop: 14,
-      borderTop: `1px solid ${C.border}`,
       textAlign: "center"
     }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: C.muted,
-      marginBottom: 8
-    }
-  }, "Belum jadi anggota?"), /*#__PURE__*/React.createElement("button", {
-    className: "btn btn-secondary",
-    style: {
-      width: "100%",
-      padding: 11
-    },
-    onClick: onRegister
-  }, "\uD83D\uDCDD Daftar Anggota Baru")))));
+  }, "Lupa PIN? Hubungi pengurus koperasi.")));
 }
-
-// ═══════════════════════════════════════════════════════════
-// HEADER
-// ═══════════════════════════════════════════════════════════
 function Header({
   session,
   onLogout,
