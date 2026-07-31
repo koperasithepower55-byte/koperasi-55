@@ -343,6 +343,7 @@ function Modal({
 // ═══════════════════════════════════════════════════════════
 function App() {
   const [session, setSession] = useState(null);
+  const [view, setView] = useState("login");
   const [members, setMembers] = useState([]);
   const [loans, setLoans] = useState([]);
   const [apps, setApps] = useState([]);
@@ -465,9 +466,13 @@ function App() {
       lineHeight: 1.7
     }
   }, "Pastikan Environment Variables ", /*#__PURE__*/React.createElement("code", null, "VITE_SUPABASE_URL"), " dan ", /*#__PURE__*/React.createElement("code", null, "VITE_SUPABASE_ANON_KEY"), " sudah diisi benar di Vercel, lalu Redeploy.")));
+  if (!session && view === "register") return /*#__PURE__*/React.createElement(Shell, null, /*#__PURE__*/React.createElement(RegisterScreen, {
+    onBack: () => setView("login")
+  }));
   return /*#__PURE__*/React.createElement(Shell, null, !session && /*#__PURE__*/React.createElement(LoginScreen, {
     members: members,
-    onLogin: setSession
+    onLogin: setSession,
+    onRegister: () => setView("register")
   }), session?.isAdmin && /*#__PURE__*/React.createElement(AdminApp, {
     session: session,
     data: data,
@@ -532,7 +537,8 @@ function Shell({
 // ═══════════════════════════════════════════════════════════
 function LoginScreen({
   members,
-  onLogin
+  onLogin,
+  onRegister
 }) {
   const [no, setNo] = useState("");
   const [pin, setPin] = useState("");
@@ -663,7 +669,27 @@ function LoginScreen({
       textAlign: "center",
       lineHeight: 1.6
     }
-  }, "Lupa PIN? Hubungi pengurus koperasi."))));
+  }, "Lupa PIN? Hubungi pengurus koperasi."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 14,
+      paddingTop: 14,
+      borderTop: `1px solid ${C.border}`,
+      textAlign: "center"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: C.muted,
+      marginBottom: 8
+    }
+  }, "Belum jadi anggota?"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary",
+    style: {
+      width: "100%",
+      padding: 11
+    },
+    onClick: onRegister
+  }, "\uD83D\uDCDD Daftar Anggota Baru")))));
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2095,6 +2121,10 @@ function AdminApp({
     id: "syariah",
     label: "Pedoman",
     icon: "☪️"
+  }, {
+    id: "pendaftar",
+    label: "Pendaftar",
+    icon: "🆕"
   }];
   return /*#__PURE__*/React.createElement("div", {
     className: "fade"
@@ -2168,7 +2198,9 @@ function AdminApp({
   }), tab === "history" && /*#__PURE__*/React.createElement(History, {
     apps: decided,
     data: data
-  }), tab === "syariah" && /*#__PURE__*/React.createElement(PedomanSyariah, null)));
+  }), tab === "syariah" && /*#__PURE__*/React.createElement(PedomanSyariah, null), tab === "pendaftar" && /*#__PURE__*/React.createElement(PendaftarPanel, {
+    data: data
+  })));
 }
 function AdminDash({
   data,
@@ -2599,7 +2631,15 @@ function Approval({
         marginTop: 8,
         textAlign: "center"
       }
-    }, "Jika disetujui, pinjaman otomatis tercatat. Jangan lupa catat pencairan di tab Pembukuan."));
+    }, "Jika disetujui, pinjaman otomatis tercatat. Jangan lupa catat pencairan di tab Pembukuan."), /*#__PURE__*/React.createElement("div", {
+      style: { marginTop: 10 }
+    }, /*#__PURE__*/React.createElement(WaButton, {
+      phone: applicant?.phone,
+      name: applicant?.name,
+      full: true,
+      label: "Hubungi " + (applicant?.name || "pemohon") + " via WA",
+      message: "Assalamu'alaikum " + (applicant?.name || "") + ", terkait pengajuan " + (p.type === "loan" ? "pinjaman" : "jasa") + " Rp " + fmt(p.amount) + " di Koperasi The Power 55..."
+    })));
   })));
 }
 function MembersList({
@@ -2699,7 +2739,18 @@ function MembersList({
         fontSize: 13
       },
       title: "Edit"
-    }, "✏️"));
+    }, "✏️"), m.phone && /*#__PURE__*/React.createElement("a", {
+      href: waLink(m.phone, "Assalamu'alaikum " + m.name + ", dari pengurus Koperasi The Power 55."),
+      target: "_blank",
+      rel: "noopener noreferrer",
+      onClick: e => e.stopPropagation(),
+      style: {
+        textDecoration: "none",
+        fontSize: 15,
+        marginLeft: 2
+      },
+      title: "WhatsApp " + m.name
+    }, "💬"));
   })), edit && /*#__PURE__*/React.createElement(EditMemberModal, {
     member: edit,
     data: data,
@@ -2716,16 +2767,19 @@ function EditMemberModal({
   const [shu, setShu] = useState(String(member.shu_total || 0));
   const [pin, setPin] = useState(member.pin || "");
   const [status, setStatus] = useState(member.status || "aktif");
+  const [phone, setPhone] = useState(member.phone || "");
   const [busy, setBusy] = useState(false);
   const save = async () => {
     setBusy(true);
-    await sbClient.from("members").update({
-      sw_rate: parseInt(swRate) || 0,
-      sw_paid: parseInt(swPaid) || 0,
-      shu_total: parseInt(shu) || 0,
-      pin,
-      status
-    }).eq("no", member.no);
+    await sbClient.rpc("update_anggota", {
+      p_no: member.no,
+      p_sw_rate: parseInt(swRate) || 0,
+      p_sw_paid: parseInt(swPaid) || 0,
+      p_shu: parseInt(shu) || 0,
+      p_pin: pin,
+      p_status: status,
+      p_phone: phone
+    });
     await data.reload();
     setBusy(false);
     onClose();
@@ -2798,7 +2852,25 @@ function EditMemberModal({
     value: "aktif"
   }, "Aktif"), /*#__PURE__*/React.createElement("option", {
     value: "non-aktif"
-  }, "Non-aktif"))), /*#__PURE__*/React.createElement("div", {
+  }, "Non-aktif"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 11,
+      color: C.muted,
+      display: "block",
+      marginBottom: 5
+    }
+  }, "Nomor WhatsApp"), /*#__PURE__*/React.createElement("input", {
+    className: "input",
+    value: phone,
+    onChange: e => setPhone(e.target.value),
+    placeholder: "08xxxxxxxxxx"
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: C.muted,
+      marginTop: 4
+    }
+  }, "Untuk tombol WhatsApp di dashboard pengurus")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 8,
@@ -2921,7 +2993,17 @@ function LoansAdmin({
         fontSize: 10
       },
       onClick: () => setPay(l)
-    }, "Bayar")));
+    }, "Bayar"), l.status !== "lunas" && mem?.phone && /*#__PURE__*/React.createElement("a", {
+      href: waLink(mem.phone, "Assalamu'alaikum " + mem.name + " 🙏\n\nMengingatkan cicilan pinjaman di Koperasi The Power 55:\n• Sisa: Rp " + fmt(l.sisa) + "\n• Cicilan/bln: Rp " + fmt(l.amount / (l.tenor || 1)) + "\n\nMohon konfirmasi jadwal pembayaran ya. Terima kasih."),
+      target: "_blank",
+      rel: "noopener noreferrer",
+      style: {
+        marginLeft: 6,
+        textDecoration: "none",
+        fontSize: 14
+      },
+      title: "Ingatkan " + mem.name + " via WA"
+    }, "💬")));
   }))), !list.length && /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
@@ -4272,6 +4354,431 @@ function PedomanSyariah() {
       lineHeight: 1.8
     }
   }, "Ada masukan atau koreksi atas pedoman ini?", /*#__PURE__*/React.createElement("br", null), "Sampaikan kepada pengurus untuk dibahas di Rapat Anggota."));
+}
+function RegisterScreen({
+  onBack
+}) {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [ship, setShip] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [ok, setOk] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async () => {
+    if (!name.trim() || !phone.trim()) {
+      setError("Nama dan nomor HP wajib diisi.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    const {
+      error
+    } = await sbClient.rpc("daftar_anggota", {
+      p_name: name,
+      p_phone: phone,
+      p_address: address,
+      p_ship: ship,
+      p_reason: reason
+    });
+    setBusy(false);
+    if (error) {
+      setError("Gagal mengirim: " + error.message);
+      return;
+    }
+    setOk(true);
+  };
+  if (ok) return React.createElement("div", {
+    className: "fade",
+    style: {
+      minHeight: "100vh",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 20
+    }
+  }, React.createElement("div", {
+    style: {
+      maxWidth: 360,
+      textAlign: "center"
+    }
+  }, React.createElement("div", {
+    style: {
+      fontSize: 52,
+      marginBottom: 14
+    }
+  }, "✅"), React.createElement("h2", {
+    style: {
+      fontSize: 19,
+      fontWeight: 700,
+      color: C.green,
+      marginBottom: 8
+    }
+  }, "Pendaftaran Terkirim!"), React.createElement("p", {
+    style: {
+      fontSize: 13,
+      color: C.muted,
+      lineHeight: 1.8
+    }
+  }, "Terima kasih. Pengurus akan meninjau pendaftaran Anda dan menghubungi lewat WhatsApp untuk langkah berikutnya (termasuk setoran Simpanan Pokok Rp 1.000.000)."), React.createElement("button", {
+    className: "btn btn-primary",
+    style: {
+      marginTop: 18,
+      padding: "10px 20px"
+    },
+    onClick: onBack
+  }, "← Kembali ke Login")));
+  const field = (label, val, setter, ph, opt) => React.createElement("div", null, React.createElement("label", {
+    style: {
+      fontSize: 11,
+      color: C.muted,
+      display: "block",
+      marginBottom: 5
+    }
+  }, label, opt && React.createElement("span", {
+    style: {
+      color: C.muted
+    }
+  }, " (opsional)")), React.createElement("input", {
+    className: "input",
+    value: val,
+    onChange: e => {
+      setter(e.target.value);
+      setError("");
+    },
+    placeholder: ph
+  }));
+  return React.createElement("div", {
+    className: "fade",
+    style: {
+      minHeight: "100vh",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 20
+    }
+  }, React.createElement("div", {
+    style: {
+      width: "100%",
+      maxWidth: 380
+    }
+  }, React.createElement("div", {
+    style: {
+      textAlign: "center",
+      marginBottom: 20
+    }
+  }, React.createElement("div", {
+    style: {
+      fontSize: 38,
+      marginBottom: 6
+    }
+  }, "📝"), React.createElement("h1", {
+    style: {
+      fontSize: 20,
+      fontWeight: 700,
+      color: "#f8fafc",
+      margin: "4px 0"
+    }
+  }, "Pendaftaran Anggota"), React.createElement("div", {
+    style: {
+      fontSize: 11.5,
+      color: C.muted,
+      lineHeight: 1.7,
+      marginTop: 6
+    }
+  }, "Koperasi The Power 55")), React.createElement("div", {
+    style: {
+      background: `${C.teal}12`,
+      border: `1px solid ${C.teal}30`,
+      borderRadius: 10,
+      padding: "11px 13px",
+      marginBottom: 14,
+      fontSize: 11.5,
+      color: C.muted,
+      lineHeight: 1.7
+    }
+  }, React.createElement("span", {
+    style: {
+      color: C.mint,
+      fontWeight: 600
+    }
+  }, "Keuntungan jadi anggota: "), "tarif jasa sertifikat lebih hemat, bisa mengajukan pembiayaan, dan menerima SHU (bagi hasil) tiap tahun."), React.createElement("div", {
+    style: {
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 12,
+      padding: 18,
+      display: "flex",
+      flexDirection: "column",
+      gap: 12
+    }
+  }, field("Nama Lengkap", name, setName, "Sesuai KTP"), field("Nomor WhatsApp", phone, setPhone, "08xxxxxxxxxx"), field("Alamat", address, setAddress, "Kota / domisili", true), field("Kapal / Perusahaan", ship, setShip, "Tempat bekerja saat ini", true), React.createElement("div", null, React.createElement("label", {
+    style: {
+      fontSize: 11,
+      color: C.muted,
+      display: "block",
+      marginBottom: 5
+    }
+  }, "Kebutuhan / Alasan ", React.createElement("span", {
+    style: {
+      color: C.muted
+    }
+  }, "(opsional)")), React.createElement("textarea", {
+    className: "input",
+    rows: 2,
+    value: reason,
+    onChange: e => setReason(e.target.value),
+    placeholder: "Contoh: mau urus perpanjangan STCW",
+    style: {
+      resize: "vertical"
+    }
+  })), error && React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: C.red
+    }
+  }, error), React.createElement("div", {
+    style: {
+      fontSize: 10.5,
+      color: C.muted,
+      lineHeight: 1.6,
+      padding: "8px 10px",
+      background: `${C.amber}10`,
+      borderRadius: 8
+    }
+  }, "📌 Menjadi anggota mensyaratkan setoran Simpanan Pokok Rp 1.000.000 (sekali). Pengurus akan menjelaskan setelah pendaftaran ditinjau."), React.createElement("button", {
+    className: "btn btn-primary",
+    style: {
+      padding: 12,
+      fontSize: 14
+    },
+    disabled: busy || !name.trim() || !phone.trim(),
+    onClick: submit
+  }, busy ? "Mengirim…" : "🚀 Kirim Pendaftaran"), React.createElement("button", {
+    className: "btn btn-secondary",
+    style: {
+      padding: 10
+    },
+    onClick: onBack
+  }, "← Kembali ke Login"))));
+}
+function PendaftarPanel({
+  data
+}) {
+  const [list, setList] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const load = async () => {
+    const {
+      data: rows
+    } = await sbClient.rpc("list_pendaftar");
+    setList(rows || []);
+  };
+  useEffect(() => {
+    load();
+  }, []);
+  const approve = async reg => {
+    const pin = prompt(`Setujui ${reg.name} sebagai anggota.\n\nTentukan PIN login (4 digit) untuk anggota ini:`, "");
+    if (!pin) return;
+    setBusy(reg.id);
+    const {
+      data: newNo,
+      error
+    } = await sbClient.rpc("approve_pendaftar", {
+      p_reg_id: reg.id,
+      p_pin: pin
+    });
+    setBusy(null);
+    if (error) {
+      alert("Gagal: " + error.message);
+      return;
+    }
+    alert(`✅ ${reg.name} kini anggota no. ${newNo}, PIN ${pin}.\n\nJangan lupa: pastikan setoran Simpanan Pokok Rp 1jt diterima, lalu catat di Pembukuan.`);
+    load();
+    data.reload();
+  };
+  const reject = async reg => {
+    if (!confirm(`Tolak pendaftaran ${reg.name}?`)) return;
+    setBusy(reg.id);
+    await sbClient.rpc("reject_pendaftar", {
+      p_reg_id: reg.id
+    });
+    setBusy(null);
+    load();
+  };
+  if (list === null) return React.createElement("div", {
+    style: {
+      textAlign: "center",
+      padding: 40,
+      color: C.muted,
+      fontSize: 13
+    }
+  }, "Memuat…");
+  if (!list.length) return React.createElement("div", {
+    className: "fade",
+    style: {
+      textAlign: "center",
+      padding: 40,
+      color: C.muted,
+      fontSize: 13
+    }
+  }, React.createElement("div", {
+    style: {
+      fontSize: 42,
+      marginBottom: 10
+    }
+  }, "📭"), "Belum ada pendaftar baru.");
+  return React.createElement("div", {
+    className: "fade"
+  }, React.createElement("div", {
+    style: {
+      background: `${C.accent}10`,
+      border: `1px solid ${C.accent}30`,
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 14,
+      fontSize: 12,
+      color: C.accent,
+      fontWeight: 600
+    }
+  }, `📋 ${list.length} calon anggota menunggu persetujuan`), React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 12
+    }
+  }, ...list.map(reg => React.createElement("div", {
+    key: reg.id,
+    style: {
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 12,
+      padding: 16
+    }
+  }, React.createElement("div", {
+    style: {
+      fontSize: 15,
+      fontWeight: 700,
+      marginBottom: 2
+    }
+  }, reg.name), React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: C.muted,
+      marginBottom: 10
+    }
+  }, "Mendaftar " + timeAgo(reg.created_at)), React.createElement("div", {
+    style: {
+      background: C.dark,
+      borderRadius: 8,
+      padding: 12,
+      fontSize: 12,
+      lineHeight: 1.9,
+      marginBottom: 12
+    }
+  }, React.createElement("div", null, React.createElement("span", {
+    style: {
+      color: C.muted
+    }
+  }, "📱 WhatsApp: "), React.createElement("strong", null, reg.phone)), reg.address && React.createElement("div", null, React.createElement("span", {
+    style: {
+      color: C.muted
+    }
+  }, "📍 Alamat: "), reg.address), reg.ship && React.createElement("div", null, React.createElement("span", {
+    style: {
+      color: C.muted
+    }
+  }, "🚢 Kapal/PT: "), reg.ship), reg.reason && React.createElement("div", {
+    style: {
+      marginTop: 4,
+      paddingTop: 6,
+      borderTop: `1px dashed ${C.border}`,
+      fontStyle: "italic",
+      color: C.muted
+    }
+  }, `"${reg.reason}"`)), React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8
+    }
+  }, React.createElement("button", {
+    className: "btn btn-danger",
+    style: {
+      flex: 1
+    },
+    disabled: busy === reg.id,
+    onClick: () => reject(reg)
+  }, "❌ Tolak"), React.createElement("button", {
+    className: "btn btn-success",
+    style: {
+      flex: 1
+    },
+    disabled: busy === reg.id,
+    onClick: () => approve(reg)
+  }, "✅ Jadikan Anggota")), React.createElement("div", {
+    style: {
+      marginTop: 8
+    }
+  }, React.createElement(WaButton, {
+    phone: reg.phone,
+    name: reg.name,
+    full: true,
+    label: "Hubungi " + reg.name + " via WA",
+    message: "Assalamu'alaikum " + reg.name + ", terima kasih sudah mendaftar di Koperasi The Power 55. Kami ingin menjelaskan langkah berikutnya (termasuk Simpanan Pokok Rp 1.000.000)..."
+  })), React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: C.muted,
+      marginTop: 8,
+      textAlign: "center"
+    }
+  }, "Saat disetujui, anggota otomatis dapat nomor & PIN. Pastikan Simpanan Pokok Rp 1jt sudah diterima.")))));
+}
+function waLink(phone, msg) {
+  if (!phone) return null;
+  let p = String(phone).replace(/[^0-9]/g, "");
+  if (p.startsWith("0")) p = "62" + p.slice(1);else if (p.startsWith("8")) p = "62" + p;
+  return "https://wa.me/" + p + (msg ? "?text=" + encodeURIComponent(msg) : "");
+}
+function WaButton({
+  phone,
+  name,
+  message,
+  label,
+  full
+}) {
+  const link = waLink(phone, message);
+  if (!link) return React.createElement("div", {
+    style: {
+      fontSize: 10.5,
+      color: C.amber,
+      padding: "6px 10px",
+      background: `${C.amber}10`,
+      borderRadius: 6,
+      textAlign: "center"
+    }
+  }, "📱 Nomor HP belum diisi — tap ✏️ untuk menambah");
+  return React.createElement("a", {
+    href: link,
+    target: "_blank",
+    rel: "noopener noreferrer",
+    style: {
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      background: "#25D366",
+      color: "#fff",
+      fontWeight: 600,
+      fontSize: full ? 13 : 11.5,
+      padding: full ? "10px 16px" : "6px 12px",
+      borderRadius: 8,
+      textDecoration: "none",
+      width: full ? "100%" : "auto",
+      boxSizing: "border-box",
+      fontFamily: "inherit"
+    }
+  }, "💬 " + (label || "WhatsApp"));
 }
 ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(App, null));
 </script>
